@@ -2,13 +2,19 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
-import { SendIcon, RefreshCw, PlusCircle, X, Save, Check, ChevronDown } from "lucide-react"
+import { SendIcon, RefreshCw, PlusCircle, X, Check, ChevronDown, Copy, CheckCheck } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import ReactMarkdown from 'react-markdown'
+import rehypeHighlight from 'rehype-highlight'
+import rehypeSanitize from 'rehype-sanitize'
+import remarkGfm from 'remark-gfm'
+import 'highlight.js/styles/github-dark.css'
+import copy from 'copy-to-clipboard'
 
 // Define types for messages, examples and API
 type MessageRole = 'user' | 'assistant';
@@ -59,6 +65,7 @@ const exampleTypeLabels: Record<ExampleType, { first: string, second: string }> 
 // localStorage key for saving examples
 const EXAMPLES_STORAGE_KEY = 'few-shot-chatbot-examples';
 const TEMPLATES_STORAGE_KEY = 'few-shot-chatbot-templates';
+const TEMPLATE_HEIGHTS_STORAGE_KEY = 'few-shot-chatbot-template-heights';
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -147,12 +154,6 @@ async function fetchData() {
     };
   }
   
-  // Template editing state
-  const [isAddingTemplate, setIsAddingTemplate] = useState(false);
-  const [newTemplate, setNewTemplate] = useState<Partial<Template>>({
-    inputs: []
-  });
-  
   // For auto-resizing textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
@@ -165,11 +166,21 @@ async function fetchData() {
   const [editingInputIndex, setEditingInputIndex] = useState<number | null>(null);
   const [editingDescription, setEditingDescription] = useState("");
   
-  // For section navigation
-  const [activeTab, setActiveTab] = useState<'examples' | 'templates' | 'conversation'>('examples');
-  
   // For template card resizing
-  const [templateHeights, setTemplateHeights] = useState<Record<string, number>>({});
+  const [templateHeights, setTemplateHeights] = useState<Record<string, number>>(() => {
+    if (isLocalStorageAvailable()) {
+      try {
+        const savedHeights = localStorage.getItem(TEMPLATE_HEIGHTS_STORAGE_KEY);
+        if (savedHeights) {
+          console.log('Initializing template heights from localStorage');
+          return JSON.parse(savedHeights);
+        }
+      } catch (error) {
+        console.error("Failed to load template heights from localStorage during initialization:", error);
+      }
+    }
+    return {};
+  });
   const resizingRef = useRef<{
     isResizing: boolean;
     templateId: string | null;
@@ -243,6 +254,19 @@ async function fetchData() {
       }
     }
   }, [templates]);
+  
+  // Save template heights to localStorage whenever they change
+  useEffect(() => {
+    if (isLocalStorageAvailable() && Object.keys(templateHeights).length > 0) {
+      try {
+        const heightsJSON = JSON.stringify(templateHeights);
+        localStorage.setItem(TEMPLATE_HEIGHTS_STORAGE_KEY, heightsJSON);
+        console.log('Template heights saved to localStorage:', templateHeights);
+      } catch (error) {
+        console.error("Failed to save template heights to localStorage:", error);
+      }
+    }
+  }, [templateHeights]);
   
   const handleSendMessage = async () => {
     if (!input.trim()) return;
@@ -490,41 +514,6 @@ async function fetchData() {
   
   const removeTemplate = (index: number) => {
     setTemplates(templates.filter((_, i) => i !== index));
-  };
-  
-  // Template block management
-  const addInputToTemplate = () => {
-    setNewTemplate({
-      ...newTemplate,
-      inputs: [
-        ...(newTemplate.inputs || []),
-        { id: `input-${Date.now()}`, description: "", content: "" }
-      ]
-    });
-  };
-  
-  const updateInputInTemplate = (index: number, field: keyof TemplateInput, value: string) => {
-    const inputs = newTemplate.inputs || [];
-    
-    const updatedInputs = [...inputs];
-    updatedInputs[index] = {
-      ...updatedInputs[index],
-      [field]: value
-    };
-    
-    setNewTemplate({
-      ...newTemplate,
-      inputs: updatedInputs
-    });
-  };
-  
-  const removeInputFromTemplate = (index: number) => {
-    const inputs = newTemplate.inputs || [];
-    
-    setNewTemplate({
-      ...newTemplate,
-      inputs: inputs.filter((_, i) => i !== index)
-    });
   };
   
   // Debug localStorage on component mount
@@ -794,7 +783,26 @@ async function fetchData() {
   
   // Stop resizing
   const stopResizing = () => {
+    if (resizingRef.current.isResizing && resizingRef.current.templateId) {
+      
+      // Explicitly save to localStorage
+      if (isLocalStorageAvailable()) {
+        try {
+          const updatedHeights = {
+            ...templateHeights
+          };
+          const heightsJSON = JSON.stringify(updatedHeights);
+          localStorage.setItem(TEMPLATE_HEIGHTS_STORAGE_KEY, heightsJSON);
+          console.log('Template heights saved after resize:', updatedHeights);
+        } catch (error) {
+          console.error("Failed to save template heights after resize:", error);
+        }
+      }
+    }
+    
+    // Reset resizing state
     resizingRef.current.isResizing = false;
+    resizingRef.current.templateId = null;
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', stopResizing);
   };
@@ -1122,7 +1130,7 @@ async function fetchData() {
                               updatedTemplates[index].inputs[idx].content = e.target.value;
                               setTemplates(updatedTemplates);
                             }}
-                            className="w-full p-2 text-sm border rounded-md bg-background resize-none min-h-[80px]"
+                            className="w-full p-2 text-sm border rounded-md bg-background resize-none min-h-[80px] max-h-[500px] overflow-y-auto"
                             placeholder="Enter your input here..."
                           />
                           
@@ -1183,7 +1191,7 @@ async function fetchData() {
           {/* Chat messages */}
           <section className="mb-48" id="chat">
             <h2 className="text-xl font-semibold tracking-tight mb-4">Conversation</h2>
-            <div className="overflow-y-auto space-y-4 mb-16 rounded-2xl border p-5 bg-card/30 backdrop-blur-sm min-h-[300px] max-h-[500px]">
+            <div className="space-y-4 mb-16 rounded-2xl border p-5 bg-card/30 backdrop-blur-sm min-h-[300px]">
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-72 text-center">
                   <p className="text-muted-foreground mb-2">
@@ -1267,11 +1275,125 @@ async function fetchData() {
                           />
                         </div>
                       ) : (
-                        <div 
-                          className="whitespace-pre-wrap cursor-pointer hover:bg-opacity-90 transition-colors"
-                          onClick={() => startEditingMessage(index)}
-                        >
-                          {message.content}
+                        <div className="whitespace-pre-wrap overflow-hidden break-words">
+                          {message.role === 'assistant' ? (
+                            <div className="markdown-wrapper p-0">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                rehypePlugins={[rehypeSanitize, rehypeHighlight]}
+                                components={{
+                                  pre: ({ children, ...props }) => {
+                                    const [copied, setCopied] = useState(false);
+                                    const codeRef = useRef<HTMLPreElement>(null);
+                                    
+                                    const handleCopy = () => {
+                                      const code = codeRef.current?.textContent || '';
+                                      copy(code);
+                                      setCopied(true);
+                                      setTimeout(() => setCopied(false), 2000);
+                                    };
+                                    
+                                    return (
+                                      <div className="relative group">
+                                        <pre 
+                                          ref={codeRef} 
+                                          className="markdown-code-block p-0" 
+                                          style={{ 
+                                            borderRadius: '0.75rem', 
+                                            padding: '1.25rem',
+                                            paddingRight: '2.5rem' 
+                                          }} 
+                                          {...props}
+                                        >
+                                          {children}
+                                        </pre>
+                                        <button
+                                          onClick={handleCopy}
+                                          className="code-copy-button absolute top-3 right-3 p-1.5 rounded-md transition-opacity duration-200 hover:bg-secondary text-muted-foreground hover:text-foreground"
+                                          title="Copy code"
+                                          aria-label="Copy code to clipboard"
+                                        >
+                                          {copied ? (
+                                            <CheckCheck size={16} className="text-green-500 check-icon" />
+                                          ) : (
+                                            <Copy size={16} />
+                                          )}
+                                        </button>
+                                      </div>
+                                    );
+                                  },
+                                  code: ({ className, children, ...props }) => {
+                                    const match = /language-(\w+)/.exec(className || '');
+                                    return match ? (
+                                      <code 
+                                        className={`${className || ''}`} 
+                                        {...props}
+                                      >
+                                        {children}
+                                      </code>
+                                    ) : (
+                                      <code 
+                                        className="bg-background/50 px-1 py-0.5 rounded-sm text-sm" 
+                                        {...props}
+                                      >
+                                        {children}
+                                      </code>
+                                    );
+                                  },
+                                  p: ({ children, ...props }) => (
+                                    <p className="mb-2 last:mb-0" {...props}>{children}</p>
+                                  ),
+                                  ul: ({ children, ...props }) => (
+                                    <ul className="ml-6 mb-2 list-disc" {...props}>{children}</ul>
+                                  ),
+                                  ol: ({ children, ...props }) => (
+                                    <ol className="ml-6 mb-2 list-decimal" {...props}>{children}</ol>
+                                  ),
+                                  li: ({ children, ...props }) => (
+                                    <li className="mb-1" {...props}>{children}</li>
+                                  ),
+                                  a: ({ children, ...props }) => (
+                                    <a className="text-blue-500 hover:underline" {...props}>{children}</a>
+                                  ),
+                                  h1: ({ children, ...props }) => (
+                                    <h1 className="text-xl font-bold mb-2 mt-4" {...props}>{children}</h1>
+                                  ),
+                                  h2: ({ children, ...props }) => (
+                                    <h2 className="text-lg font-bold mb-2 mt-3" {...props}>{children}</h2>
+                                  ),
+                                  h3: ({ children, ...props }) => (
+                                    <h3 className="text-md font-bold mb-2 mt-3" {...props}>{children}</h3>
+                                  ),
+                                  table: ({ children, ...props }) => (
+                                    <div className="overflow-x-auto my-4">
+                                      <table className="border-collapse border border-border" {...props}>{children}</table>
+                                    </div>
+                                  ),
+                                  th: ({ children, ...props }) => (
+                                    <th className="border border-border bg-secondary px-4 py-2 text-left" {...props}>{children}</th>
+                                  ),
+                                  td: ({ children, ...props }) => (
+                                    <td className="border border-border px-4 py-2" {...props}>{children}</td>
+                                  ),
+                                  blockquote: ({ children, ...props }) => (
+                                    <blockquote className="pl-4 border-l-4 border-border italic my-2" {...props}>{children}</blockquote>
+                                  ),
+                                  hr: ({ ...props }) => (
+                                    <hr className="my-4 border-border" {...props} />
+                                  ),
+                                }}
+                              >
+                                {message.content}
+                              </ReactMarkdown>
+                            </div>
+                          ) : (
+                            <div 
+                              className="cursor-pointer hover:bg-opacity-90 transition-colors"
+                              onClick={() => startEditingMessage(index)}
+                            >
+                              {message.content}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

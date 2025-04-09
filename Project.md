@@ -15,3 +15,8 @@ Web app for controlling AI responses through examples instead of instructions.
 - Context: Combines examples and templates in Gemini API prompts
 
 Uses Gemini API with few-shot prompting technique to create consistent outputs based on demonstrated patterns. 
+
+
+
+- show token count 
+- option to run tempaltes directly in conversaiton witohut having to send a mesage 
