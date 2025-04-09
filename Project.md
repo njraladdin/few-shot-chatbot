@@ -1,13 +1,17 @@
 # Few-Shot Chatbot
 
-A web application that allows users to guide AI responses through examples rather than explicit instructions. This approach, known as few-shot learning, enables more precise control over the AI's output format and style.
+Web app for controlling AI responses through examples instead of instructions.
 
 ## Core Features
 
-- **Examples**: Input-output or name-content pairs that demonstrate the desired response patterns
-- **Templates**: Reusable templates with fixed text and variable input sections
-- **Conversation**: Simple chat interface to interact with the AI using defined examples
+- **Examples**: Input-output pairs that guide response patterns
+- **Templates**: Customizable input fields with editable descriptions
+- **Conversation**: Chat interface using examples and templates
 
-The application uses the Gemini API to provide AI responses but focuses on the few-shot prompting technique, where examples are provided in the prompt context to guide the AI's understanding of the desired response pattern.
+## Updates
 
-Rather than giving complex instructions, users can simply show the AI what they want through examples, resulting in more consistent and predictable outputs that follow the demonstrated patterns. 
+- Templates: Added resizable cards, multi-field support, editable descriptions
+- Storage: Auto-saves to localStorage
+- Context: Combines examples and templates in Gemini API prompts
+
+Uses Gemini API with few-shot prompting technique to create consistent outputs based on demonstrated patterns. 

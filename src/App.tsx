@@ -14,8 +14,6 @@ import {
 type MessageRole = 'user' | 'assistant';
 type Message = { role: MessageRole; content: string; id?: string };
 
-// Sample scraper template content
-const SAMPLE_SCRAPER_TEMPLATE = `axios requests input`;
 
 // Define the Example types for few-shot learning
 type ExampleType = 'input-output' | 'name-content';
@@ -82,12 +80,6 @@ function App() {
     }
     return [];
   });
-  const [newExample, setNewExample] = useState<Example>({ 
-    type: 'input-output',
-    firstField: "", 
-    secondField: "" 
-  });
-  const [isAddingExample, setIsAddingExample] = useState(false);
   
   // Templates for few-shot learning - initialize with data from localStorage if it exists
   const [templates, setTemplates] = useState<Template[]>(() => {
@@ -399,55 +391,79 @@ async function fetchData() {
     setMessages([]);
   };
   
-  const addExample = () => {
-    if (newExample.firstField.trim() && newExample.secondField.trim()) {
-      setExamples([...examples, { ...newExample }]);
-      setNewExample({ 
-        type: newExample.type, // Keep the same type for convenience
-        firstField: "", 
-        secondField: "" 
-      });
-      setIsAddingExample(false);
-    }
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingField, setEditingField] = useState<'firstField' | 'secondField' | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  // API configuration from environment variables
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+  const MODEL_ID = "gemini-2.0-flash";
+  
+  // Add a new example directly with empty fields in edit mode
+  const addNewExample = (type: ExampleType) => {
+    const newExampleId = examples.length;
+    const newExample: Example = {
+      type,
+      firstField: "",
+      secondField: ""
+    };
+    setExamples([...examples, newExample]);
+    
+    // Put the new example's first field in edit mode
+    setEditingIndex(newExampleId);
+    setEditingField('firstField');
+    setEditValue("");
   };
   
-  const selectExampleType = (type: ExampleType) => {
-    setNewExample({ 
-      type: type,
-      firstField: "", 
-      secondField: "" 
-    });
-    setIsAddingExample(true);
-  };
-  
-  const removeExample = (index: number) => {
-    setExamples(examples.filter((_, i) => i !== index));
-  };
-  
+  // Edit example field
   const startEditing = (index: number, field: 'firstField' | 'secondField') => {
     setEditingIndex(index);
     setEditingField(field);
     setEditValue(examples[index][field]);
   };
   
+  // Save example edit
   const saveEdit = () => {
-    if (editingIndex !== null && editingField !== null && editValue.trim()) {
+    if (editingIndex !== null && editingField !== null) {
       const updatedExamples = [...examples];
-      updatedExamples[editingIndex] = {
-        ...updatedExamples[editingIndex],
-        [editingField]: editValue
-      };
-      setExamples(updatedExamples);
-      setEditingIndex(null);
-      setEditingField(null);
+      // If it's a new empty example being created, only save if there's content
+      const shouldUpdate = updatedExamples[editingIndex][editingField] !== "" || editValue.trim() !== "";
+      
+      if (shouldUpdate) {
+        updatedExamples[editingIndex] = {
+          ...updatedExamples[editingIndex],
+          [editingField]: editValue
+        };
+        setExamples(updatedExamples);
+      }
+      
+      // If we just edited firstField, move to secondField
+      if (editingField === 'firstField' && updatedExamples[editingIndex].secondField === "") {
+        setEditingField('secondField');
+        setEditValue("");
+      } else {
+        // Otherwise, exit edit mode
+        setEditingIndex(null);
+        setEditingField(null);
+      }
     }
   };
   
+  // Cancel example edit
   const cancelEdit = () => {
+    // Check if this is a new example with empty fields
+    if (editingIndex !== null && 
+        examples[editingIndex].firstField === "" && 
+        examples[editingIndex].secondField === "") {
+      // Remove the empty example
+      setExamples(examples.filter((_, i) => i !== editingIndex));
+    }
+    
     setEditingIndex(null);
     setEditingField(null);
   };
   
+  // Change example type
   const changeExampleType = (index: number, type: ExampleType) => {
     const updatedExamples = [...examples];
     updatedExamples[index] = {
@@ -470,8 +486,6 @@ async function fetchData() {
       ]
     };
     setTemplates([...templates, template]);
-    
-    // No need to close edit mode since we're not using it anymore
   };
   
   const removeTemplate = (index: number) => {
@@ -513,15 +527,6 @@ async function fetchData() {
     });
   };
   
-  // For inline editing examples
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingField, setEditingField] = useState<'firstField' | 'secondField' | null>(null);
-  const [editValue, setEditValue] = useState("");
-
-  // API configuration from environment variables
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-  const MODEL_ID = "gemini-2.0-flash";
-  
   // Debug localStorage on component mount
   useEffect(() => {
     if (isLocalStorageAvailable()) {
@@ -544,6 +549,11 @@ async function fetchData() {
       console.error('❌ localStorage is NOT available!');
     }
   }, []);
+
+  // Remove example
+  const removeExample = (index: number) => {
+    setExamples(examples.filter((_, i) => i !== index));
+  };
 
   // Functions for editing messages
   const startEditingMessage = (index: number) => {
@@ -820,30 +830,28 @@ async function fetchData() {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold tracking-tight">Examples</h2>
               
-              {!isAddingExample && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium">
-                      <PlusCircle className="h-3.5 w-3.5" />
-                      Add Example
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-40 rounded-xl shadow-lg">
-                    <DropdownMenuItem 
-                      onClick={() => selectExampleType('input-output')}
-                      className="cursor-pointer rounded-lg"
-                    >
-                      Input-Output
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={() => selectExampleType('name-content')}
-                      className="cursor-pointer rounded-lg"
-                    >
-                      Name-Content
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium">
+                    <PlusCircle className="h-3.5 w-3.5" />
+                    Add Example
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40 rounded-xl shadow-lg">
+                  <DropdownMenuItem 
+                    onClick={() => addNewExample('input-output')}
+                    className="cursor-pointer rounded-lg"
+                  >
+                    Input-Output
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => addNewExample('name-content')}
+                    className="cursor-pointer rounded-lg"
+                  >
+                    Name-Content
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             
             {/* Example list */}
@@ -936,7 +944,7 @@ async function fetchData() {
                             className="cursor-pointer hover:bg-accent hover:text-accent-foreground px-2 py-0.5 rounded-md max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
                             onClick={() => startEditing(index, 'firstField')}
                           >
-                            {example.firstField}
+                            {example.firstField || "Click to add content..."}
                           </span>
                         )}
                       </div>
@@ -982,7 +990,7 @@ async function fetchData() {
                             className="cursor-pointer hover:bg-accent hover:text-accent-foreground px-2 py-0.5 rounded-md max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
                             onClick={() => startEditing(index, 'secondField')}
                           >
-                            {example.secondField}
+                            {example.secondField || "Click to add content..."}
                           </span>
                         )}
                       </div>
@@ -991,84 +999,6 @@ async function fetchData() {
                 );
               })}
             </div>
-            
-            {/* Add example form */}
-            {isAddingExample && (
-              <div className="border rounded-2xl p-5 bg-card text-card-foreground shadow-sm">
-                <div className="flex justify-between items-center mb-4">
-                  <div className="flex items-center">
-                    <label className="block text-sm font-medium mr-3">Example Type:</label>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="h-8 flex items-center gap-1 px-4 text-sm rounded-full"
-                        >
-                          {newExample.type === 'input-output' ? 'Input-Output' : 'Name-Content'}
-                          <ChevronDown className="h-3 w-3" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-32 rounded-xl shadow-lg">
-                        <DropdownMenuItem 
-                          onClick={() => setNewExample({ ...newExample, type: 'input-output' })}
-                          className={`cursor-pointer rounded-lg ${newExample.type === 'input-output' ? 'font-medium' : ''}`}
-                        >
-                          Input-Output
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => setNewExample({ ...newExample, type: 'name-content' })}
-                          className={`cursor-pointer rounded-lg ${newExample.type === 'name-content' ? 'font-medium' : ''}`}
-                        >
-                          Name-Content
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <Button 
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground rounded-full"
-                    onClick={() => setIsAddingExample(false)}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2">
-                    {exampleTypeLabels[newExample.type].first}:
-                  </label>
-                  <Textarea 
-                    value={newExample.firstField}
-                    onChange={(e) => setNewExample({ ...newExample, firstField: e.target.value })}
-                    className="w-full p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-                    placeholder={`Enter ${exampleTypeLabels[newExample.type].first.toLowerCase()} here...`}
-                  />
-                </div>
-                <div className="mb-5">
-                  <label className="block text-sm font-medium mb-2">
-                    {exampleTypeLabels[newExample.type].second}:
-                  </label>
-                  <Textarea 
-                    value={newExample.secondField}
-                    onChange={(e) => setNewExample({ ...newExample, secondField: e.target.value })}
-                    className="w-full p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-                    placeholder={`Enter ${exampleTypeLabels[newExample.type].second.toLowerCase()} here...`}
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <Button 
-                    onClick={addExample}
-                    className="flex items-center gap-1.5 rounded-full h-9 px-5"
-                    disabled={!newExample.firstField.trim() || !newExample.secondField.trim()}
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                    Save Example
-                  </Button>
-                </div>
-              </div>
-            )}
           </section>
           
           {/* Templates Section */}
@@ -1105,7 +1035,7 @@ async function fetchData() {
                   </div>
                   
                   <div 
-                    className="overflow-y-auto mb-4 rounded-lg p-3"
+                    className="overflow-y-auto mb-4 rounded-lg p-3 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
                     style={{ 
                       maxHeight: templateHeights[template.id] || 300,
                       height: templateHeights[template.id] ? `${templateHeights[template.id]}px` : 'auto'
