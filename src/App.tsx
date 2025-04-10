@@ -30,6 +30,9 @@ type Message = {
 // For message type selection
 type MessageType = 'text' | 'template';
 
+// Local storage key for messages
+export const MESSAGES_STORAGE_KEY = 'few-shot-chatbot-messages';
+
 // Simple token counter utility (approximation)
 const estimateTokenCount = (text: string): number => {
   // GPT models use about 4 characters per token on average in English text
@@ -182,7 +185,20 @@ const isLocalStorageAvailable = () => {
 };
 
 function App() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (isLocalStorageAvailable()) {
+      try {
+        const savedMessages = localStorage.getItem(MESSAGES_STORAGE_KEY);
+        if (savedMessages) {
+          console.log('Initializing messages from localStorage');
+          return JSON.parse(savedMessages);
+        }
+      } catch (error) {
+        console.error("Failed to load messages from localStorage during initialization:", error);
+      }
+    }
+    return [];
+  });
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [tokenCount, setTokenCount] = useState(0);
@@ -194,6 +210,24 @@ function App() {
   
   // For auto-resizing textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Add ref for chat container to enable auto-scrolling
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Function to smoothly scroll to bottom of chat
+  const scrollToBottom = (smooth = true) => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+    }
+  };
+  
+  // Scroll to bottom whenever messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
   
   // Function to resize textarea
   const resizeTextarea = () => {
@@ -287,6 +321,19 @@ function App() {
     }
   }, [templates]);
   
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    if (isLocalStorageAvailable()) {
+      try {
+        const messagesJSON = JSON.stringify(messages);
+        localStorage.setItem(MESSAGES_STORAGE_KEY, messagesJSON);
+        console.log('Messages saved to localStorage:', messages);
+      } catch (error) {
+        console.error("Failed to save messages to localStorage:", error);
+      }
+    }
+  }, [messages]);
+  
   // Update token count when input or examples/templates change
   useEffect(() => {
     if (input.trim()) {
@@ -363,6 +410,9 @@ function App() {
     
     setIsLoading(true);
     
+    // Scroll to bottom immediately when sending a message
+    scrollToBottom(false);
+    
     try {
       // Use the utility function to generate contents and count tokens
       const { contents, tokenCount } = generateContentsAndCountTokens(
@@ -418,6 +468,10 @@ function App() {
   
   const clearChat = () => {
     setMessages([]);
+    // Also clear from localStorage
+    if (isLocalStorageAvailable()) {
+      localStorage.removeItem(MESSAGES_STORAGE_KEY);
+    }
     
     // Recalculate token count after clearing chat
     const { tokenCount } = generateContentsAndCountTokens(
@@ -521,6 +575,76 @@ function App() {
     }
   };
 
+  // Add a new function to run examples and templates without a user message
+  const handleRunExamplesAndTemplates = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Create a special system message explaining what we're doing
+      const systemMessage: Message = { 
+        role: 'user', 
+        content: "Based on the examples and templates I've given you, please respond with your initial analysis or observations. How do you interpret the patterns in the examples, and how would you apply the templates?",
+        id: `system-${Date.now()}`
+      };
+      
+      // Add the system message to chat
+      setMessages(prev => [...prev, systemMessage]);
+      
+      // Scroll to bottom immediately when running examples/templates
+      scrollToBottom(false);
+      
+      // Use the utility function to generate contents and count tokens
+      const { contents, tokenCount } = generateContentsAndCountTokens(
+        messages,
+        systemMessage,
+        examples,
+        templates,
+        formatTemplateBlocks
+      );
+      
+      // Update token count in state
+      setTokenCount(tokenCount);
+      
+      // Call Gemini API
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`, 
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents,
+            generationConfig: {
+              responseMimeType: "text/plain",
+            }
+          })
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      const aiResponse = result.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
+      
+      // Add AI response to chat
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: aiResponse,
+        id: `assistant-${Date.now()}`
+      }]);
+    } catch (error) {
+      console.error("Error calling Gemini API:", error);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: "Sorry, there was an error processing your request.",
+        id: `error-${Date.now()}`
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen min-h-svh bg-background text-foreground antialiased">
       {/* Global Header - Spans the entire width */}
@@ -620,7 +744,7 @@ function App() {
                 <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70 p-4 pb-6">
                   <Examples 
                     examples={examples} 
-                    setExamples={setExamples} 
+                    setExamples={setExamples as React.Dispatch<React.SetStateAction<Example[]>>} 
                     activeExampleIds={[]} 
                     setActiveExampleIds={() => {}}
                     showExampleManager={false}
@@ -676,7 +800,7 @@ function App() {
                 <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70 p-4 pb-6">
                   <Templates 
                     templates={templates}
-                    setTemplates={setTemplates}
+                    setTemplates={setTemplates as React.Dispatch<React.SetStateAction<Template[]>>}
                   />
                 </div>
               )}
@@ -708,48 +832,6 @@ function App() {
                   </div>
                 </div>
               </h2>
-              
-              {/* Show examples and templates count in conversation heading */}
-              <div className="flex items-center gap-2">
-                {examples.length > 0 && (
-                  <div 
-                    className="text-xs bg-primary/5 text-primary/90 px-3 py-1 rounded-full flex items-center gap-1 border border-primary/10 transition-colors duration-200 hover:bg-primary/10 cursor-pointer"
-                    onClick={() => {
-                      if (!isSidebarOpen) {
-                        setIsSidebarOpen(true);
-                      }
-                      setIsExamplesOpen(true);
-                    }}
-                  >
-                    <span>{examples.length} Example{examples.length !== 1 ? 's' : ''}</span>
-                  </div>
-                )}
-                {templates.length > 0 && (
-                  <div 
-                    className="text-xs bg-primary/5 text-primary/90 px-3 py-1 rounded-full flex items-center gap-1 border border-primary/10 transition-colors duration-200 hover:bg-primary/10 cursor-pointer"
-                    onClick={() => {
-                      if (!isSidebarOpen) {
-                        setIsSidebarOpen(true);
-                      }
-                      setIsTemplatesOpen(true);
-                    }}
-                  >
-                    <span>{templates.length} Template{templates.length !== 1 ? 's' : ''}</span>
-                  </div>
-                )}
-                {!isSidebarOpen && (examples.length > 0 || templates.length > 0) && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => setIsSidebarOpen(true)}
-                    className="h-7 px-3 text-xs rounded-full hover:bg-primary/10 hover:text-primary transition-colors duration-200 ml-1"
-                    title="Show examples & templates"
-                  >
-                    <PanelLeftOpen className="h-3 w-3 mr-1.5" />
-                    <span>View</span>
-                  </Button>
-                )}
-              </div>
             </div>
           </div>
           
@@ -757,32 +839,153 @@ function App() {
           <main className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70">
             <div className="max-w-5xl mx-auto px-6 pt-6 pb-6"> {/* Added bottom padding */}
               {/* Chat messages */}
-              <div className="space-y-4 rounded-2xl border border-border/40 p-5 bg-card/20 backdrop-blur-sm min-h-[calc(100vh-260px)] overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70"> {/* Added scrollbar styling */}
+              <div 
+                ref={chatContainerRef}
+                className="space-y-4 rounded-2xl border border-border/40 p-5 bg-card/20 backdrop-blur-sm min-h-[calc(100vh-260px)] overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70"
+              > 
+                {/* Examples and Templates Section */}
+                {(examples.length > 0 || templates.length > 0) && (
+                  <div className="mb-5 pb-5 border-b border-border/30">
+                    
+                    {/* Section Title */}
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-sm font-medium flex items-center gap-2">
+                      
+                        <span className="text-muted-foreground">
+                          Sending to the AI:
+                        </span>
+                      </h3>
+                    </div>
+                    
+                    {/* Examples Display */}
+                    {examples.length > 0 && (
+                      <div className="mb-3">
+                        <div className="flex items-center mb-2">
+                          <span className="text-xs font-semibold bg-primary/10 text-primary px-2 py-1 rounded-md">
+                            {examples.length} Example{examples.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                          {examples.map((example, idx) => {
+                            const labels = exampleTypeLabels[example.type];
+                            // Truncate long content
+                            const truncateText = (text: string, maxLength = 30) => 
+                              text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+                            
+                            return (
+                              <div 
+                                key={example.id} 
+                                className="bg-primary/5 border border-primary/10 rounded-lg p-2 text-xs flex flex-col"
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium text-primary/80">Example {idx + 1}</span>
+                                  <span className="text-[10px] bg-muted/50 px-1 py-0.5 rounded text-muted-foreground">{example.type}</span>
+                                </div>
+                                <div className="text-muted-foreground mb-1 text-[10px] line-clamp-1">
+                                  <span className="font-medium">{labels.first}:</span> {truncateText(example.firstField)}
+                                </div>
+                                <div className="text-muted-foreground text-[10px] line-clamp-1">
+                                  <span className="font-medium">{labels.second}:</span> {truncateText(example.secondField)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Templates Display */}
+                    {templates.length > 0 && (
+                      <div>
+                        <div className="flex items-center mb-2">
+                          <span className="text-xs font-semibold bg-primary/10 text-primary px-2 py-1 rounded-md">
+                            {templates.length} Template{templates.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                          {templates.map((template, idx) => (
+                            <div 
+                              key={template.id} 
+                              className="bg-primary/5 border border-primary/10 rounded-lg p-2 text-xs flex flex-col"
+                            >
+                              <div className="font-medium text-primary/80 mb-1">Template {idx + 1}</div>
+                              <div className="space-y-1">
+                                {template.inputs.map((input, inputIdx) => {
+                                  // Truncate long content
+                                  const truncateText = (text: string, maxLength = 30) => 
+                                    text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+                                  
+                                  return (
+                                    <div key={input.id} className="text-muted-foreground text-[10px] line-clamp-1 py-0.5">
+                                      <span className="font-medium inline-block min-w-[40%] max-w-[60%] truncate">
+                                        {input.description}:
+                                      </span> 
+                                      <span className="opacity-80">{truncateText(input.content)}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Clear Conversation Button (Messages only) */}
+                {messages.length > 0 && (
+                  <div className="flex justify-end mb-4">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5.5 1C5.22386 1 5 1.22386 5 1.5C5 1.77614 5.22386 2 5.5 2H9.5C9.77614 2 10 1.77614 10 1.5C10 1.22386 9.77614 1 9.5 1H5.5ZM3 3.5C3 3.22386 3.22386 3 3.5 3H11.5C11.7761 3 12 3.22386 12 3.5C12 3.77614 11.7761 4 11.5 4H3.5C3.22386 4 3 3.77614 3 3.5ZM5.5 5.5C5.5 5.22386 5.72386 5 6 5C6.27614 5 6.5 5.22386 6.5 5.5V12.5C6.5 12.7761 6.27614 13 6 13C5.72386 13 5.5 12.7761 5.5 12.5V5.5ZM8.5 5.5C8.5 5.22386 8.72386 5 9 5C9.27614 5 9.5 5.22386 9.5 5.5V12.5C9.5 12.7761 9.27614 13 9 13C8.72386 13 8.5 12.7761 8.5 12.5V5.5ZM2.5 5C2.77614 5 3 5.22386 3 5.5V13.5C3 13.7761 3.22386 14 3.5 14H11.5C11.7761 14 12 13.7761 12 13.5V5.5C12 5.22386 12.2239 5 12.5 5C12.7761 5 13 5.22386 13 5.5V13.5C13 14.3284 12.3284 15 11.5 15H3.5C2.67157 15 2 14.3284 2 13.5V5.5C2 5.22386 2.22386 5 2.5 5Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
+                          </svg>
+                          Clear messages
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuItem 
+                          onSelect={clearChat}
+                          className="text-destructive focus:text-destructive cursor-pointer"
+                        >
+                          Clear conversation messages only
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
+                
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
-                    <p className="text-muted-foreground mb-2">
-                      Start a conversation
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {examples.length > 0 ? 
-                        `The AI will follow the patterns from your ${examples.length} examples` :
-                        "Add examples to guide the AI's responses"
-                      }
-                      {templates.length > 0 &&
-                        ` and use your ${templates.length} template${templates.length !== 1 ? 's' : ''}`
-                      }
-                    </p>
-                    {(examples.length > 0 || templates.length > 0) && !isSidebarOpen && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => setIsSidebarOpen(true)}
-                        className="mt-4 text-xs rounded-full px-4 py-1 h-8 bg-background/80 hover:bg-background transition-colors duration-200"
-                      >
-                        <PanelLeftOpen className="h-3 w-3 mr-1.5" />
-                        <span>View Examples & Templates</span>
-                      </Button>
-                    )}
+                    <div className="max-w-md">
+                      <h3 className="text-lg font-medium mb-4">Start with examples & templates</h3>
+                      
+                      <div className="flex gap-4 justify-center">
+                        <div className="flex items-center gap-2 bg-muted/20 px-4 py-3 rounded-lg">
+                          <div className="bg-primary rounded-full p-1.5 flex-shrink-0">
+                            <SendIcon className="h-3.5 w-3.5 text-primary-foreground" />
+                          </div>
+                          <span className="text-sm">Type a message</span>
+                        </div>
+                        
+                        <span className="text-muted-foreground self-center">or</span>
+                        
+                        <div className="flex items-center gap-2 bg-muted/20 px-4 py-3 rounded-lg">
+                          <div className="bg-primary rounded-full p-1.5 flex-shrink-0">
+                            <svg width="14" height="14" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary-foreground">
+                              <path d="M3.5 8.5L7 12L13 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </div>
+                          <span className="text-sm">Click RUN</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   messages.map((message, index) => (
@@ -1010,41 +1213,61 @@ function App() {
           {/* Input Area (Fixed Height, Bottom) */}
           <div className="flex-shrink-0 z-10 backdrop-blur-xl bg-background/90 border-t border-border/30 py-6 pb-8 sm:pb-6"> 
             <div className="max-w-4xl mx-auto px-6">
-              {/* Simplified Message Input Area */}
-              <div className="flex gap-3">
-                <div className="flex-1 relative">
-                  <Textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                    placeholder="Type your message..."
-                    className="w-full resize-none overflow-y-auto bg-background text-foreground rounded-2xl min-h-[60px] max-h-[180px] py-4 px-4 border-border/70 focus:outline-none focus:border-primary/30 focus:ring-1 focus:ring-primary/20 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent shadow-sm transition-all duration-200 ease-in-out hover:shadow-md"
-                    style={{ 
-                      height: textareaRef.current?.scrollHeight 
-                        ? `${Math.min(textareaRef.current.scrollHeight, 180)}px` 
-                        : '60px' 
-                    }}
-                  />
+              {/* Message Input Area with RUN button */}
+              <div className="flex items-start gap-3">
+                {/* Message input and send button section */}
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="flex-1 relative">
+                    <Textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage();
+                        }
+                      }}
+                      placeholder="Type your message..."
+                      className="w-full resize-none overflow-y-auto bg-background text-foreground rounded-2xl min-h-[60px] max-h-[180px] py-4 px-4 border-border/70 focus:outline-none focus:border-primary/30 focus:ring-1 focus:ring-primary/20 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent shadow-sm transition-all duration-200 ease-in-out hover:shadow-md"
+                      style={{ 
+                        height: textareaRef.current?.scrollHeight 
+                          ? `${Math.min(textareaRef.current.scrollHeight, 180)}px` 
+                          : '60px' 
+                      }}
+                    />
+                  </div>
+                  
+                  {/* Send Button */}
+                  <Button 
+                    onClick={handleSendMessage} 
+                    disabled={isLoading || !input.trim()} 
+                    className="rounded-full h-12 w-12 p-0 flex items-center justify-center flex-shrink-0 shadow-sm hover:shadow transition-all duration-200"
+                  >
+                    <SendIcon className="h-5 w-5" />
+                  </Button>
                 </div>
+                
+                {/* Vertical separator */}
+                <div className="h-12 w-px bg-border/50 mx-2 self-center"></div>
+                
+                {/* RUN Button - Only enabled if there are examples or templates */}
                 <Button 
-                  onClick={handleSendMessage} 
-                  disabled={isLoading || !input.trim()} 
-                  className="rounded-full h-12 w-12 p-0 flex items-center justify-center flex-shrink-0 shadow-sm hover:shadow transition-all duration-200"
+                  onClick={handleRunExamplesAndTemplates} 
+                  disabled={isLoading || (examples.length === 0 && templates.length === 0)}
+                  className="rounded-full h-12 px-5 text-sm font-medium flex-shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2"
+                  title="Run examples and templates to get AI response"
                 >
-                  <SendIcon className="h-5 w-5" />
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={clearChat} 
-                  className="rounded-full h-12 px-5 text-sm font-medium flex-shrink-0 shadow-sm hover:shadow-none transition-all duration-200"
-                >
-                  Clear
+                  <span>RUN</span>
+                  {(examples.length > 0 || templates.length > 0) && (
+                    <span className="text-xs bg-white/20 text-white px-1.5 py-0.5 rounded-full">
+                      {examples.length > 0 && templates.length > 0 
+                        ? `${examples.length}E + ${templates.length}T` 
+                        : examples.length > 0 
+                          ? `${examples.length}E` 
+                          : `${templates.length}T`}
+                    </span>
+                  )}
                 </Button>
               </div>
             </div>
