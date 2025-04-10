@@ -18,5 +18,5 @@ Uses Gemini API with few-shot prompting technique to create consistent outputs b
 
 
 TODO: 
-- show token count 
+- show token count, done 
 - option to run tempaltes directly in conversaiton witohut having to send a mesage 

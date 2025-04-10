@@ -15,10 +15,16 @@ import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import 'highlight.js/styles/github-dark.css'
 import copy from 'copy-to-clipboard'
+import Templates, { Template,  TEMPLATES_STORAGE_KEY, TEMPLATE_HEIGHTS_STORAGE_KEY, createDefaultTemplate, formatTemplateBlocks } from "@/components/Templates"
 
 // Define types for messages, examples and API
 type MessageRole = 'user' | 'assistant';
-type Message = { role: MessageRole; content: string; id?: string };
+type Message = { 
+  role: MessageRole; 
+  content: string; 
+  id?: string;
+  activeExampleIds?: string[]; // Track which examples were active when the message was sent
+};
 
 
 // Define the Example types for few-shot learning
@@ -28,20 +34,15 @@ type Example = {
   type: ExampleType;
   firstField: string;
   secondField: string;
+  id: string; // Add id for easier reference
 };
 
 // Define Template type for reusable templates with variables
 // Templates are automatically included in the conversation context, similar to examples
-type Template = {
-  id: string;
-  inputs: TemplateInput[];
-};
+// Template and TemplateInput types are now imported from @/components/Templates
 
-type TemplateInput = {
-  id: string;
-  description: string;
-  content: string;
-};
+// For message type selection
+type MessageType = 'text' | 'template';
 
 // Simple token counter utility (approximation)
 const estimateTokenCount = (text: string): number => {
@@ -54,6 +55,7 @@ const generateContentsAndCountTokens = (
   messages: Message[], 
   userMessage: Message | null,
   examples: Example[],
+  selectedTemplateIndex: number | null,  // Add selectedTemplateIndex parameter
   templates: Template[],
   formatTemplateBlocks: (template: Template) => string
 ): { contents: any[], tokenCount: number } => {
@@ -112,49 +114,49 @@ const generateContentsAndCountTokens = (
     totalText += transition2;
   }
   
-  // Add templates with clear labeling if there are any
-  if (templates.length > 0) {
-    // System message explaining templates
-    const templateIntro = "I'm also providing TEMPLATES that you should consider when responding. These templates provide structure or code patterns to use in appropriate contexts.";
+  // Add template (if one is selected) - Only include selected template, not all templates
+  if (selectedTemplateIndex !== null && templates.length > selectedTemplateIndex) {
+    const selectedTemplate = templates[selectedTemplateIndex];
+    
+    // System message explaining template
+    const templateIntro = "I'm also providing a TEMPLATE that you should consider when responding. This template provides structure or code patterns to use in appropriate contexts.";
     contents.push({
       role: 'user' as const,
       parts: [{ text: templateIntro }]
     });
     totalText += templateIntro;
     
-    const templateResponse = "I understand. I'll consider these templates when forming my responses where appropriate.";
+    const templateResponse = "I understand. I'll consider this template when forming my responses where appropriate.";
     contents.push({
       role: 'model' as const,
       parts: [{ text: templateResponse }]
     });
     totalText += templateResponse;
     
-    // Add each template with clear labels
-    templates.forEach((template, idx) => {
-      const templateText = `TEMPLATE ${idx + 1} - ${formatTemplateBlocks(template)}`;
+    // Add the selected template with clear label
+    const templateText = `TEMPLATE - ${formatTemplateBlocks(selectedTemplate)}`;
       contents.push({
         role: 'user' as const,
         parts: [{ text: templateText }]
       });
       totalText += templateText;
       
-      const templateConfirm = `I'll use TEMPLATE ${idx + 1} when appropriate in my responses.`;
+    const templateConfirm = `I'll use this template when appropriate in my responses.`;
       contents.push({
         role: 'model' as const,
         parts: [{ text: templateConfirm }]
       });
       totalText += templateConfirm;
-    });
     
     // Add transition message
-    const transition3 = "Now let's proceed with the conversation, using templates and examples as appropriate.";
+    const transition3 = "Now let's proceed with the conversation, using the template and examples as appropriate.";
     contents.push({
       role: 'user' as const,
       parts: [{ text: transition3 }]
     });
     totalText += transition3;
     
-    const transition4 = "I'm ready to have our conversation, keeping these templates and examples in mind.";
+    const transition4 = "I'm ready to have our conversation, keeping this template and examples in mind.";
     contents.push({
       role: 'model' as const,
       parts: [{ text: transition4 }]
@@ -202,8 +204,6 @@ const exampleTypeLabels: Record<ExampleType, { first: string, second: string }> 
 
 // localStorage key for saving examples
 const EXAMPLES_STORAGE_KEY = 'few-shot-chatbot-examples';
-const TEMPLATES_STORAGE_KEY = 'few-shot-chatbot-templates';
-const TEMPLATE_HEIGHTS_STORAGE_KEY = 'few-shot-chatbot-template-heights';
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -218,7 +218,12 @@ function App() {
         const savedExamples = localStorage.getItem(EXAMPLES_STORAGE_KEY);
         if (savedExamples) {
           console.log('Initializing examples from localStorage');
-          return JSON.parse(savedExamples);
+          const parsedExamples = JSON.parse(savedExamples);
+          // Ensure all examples have IDs
+          return parsedExamples.map((ex: any) => ({
+            ...ex,
+            id: ex.id || `example-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+          }));
         }
       } catch (error) {
         console.error("Failed to load examples from localStorage during initialization:", error);
@@ -226,6 +231,19 @@ function App() {
     }
     return [];
   });
+  
+  // New state for active examples
+  const [activeExampleIds, setActiveExampleIds] = useState<string[]>([]);
+  
+  // New state for example manager visibility
+  const [showExampleManager, setShowExampleManager] = useState<boolean>(false);
+  
+  // New state for message type selection
+  const [messageType, setMessageType] = useState<MessageType>('text');
+  // New state for selected template
+  const [selectedTemplateIndex, setSelectedTemplateIndex] = useState<number | null>(null);
+  // New state for template input values
+  const [templateInputValues, setTemplateInputValues] = useState<Record<string, string>>({});
   
   // Templates for few-shot learning - initialize with data from localStorage if it exists
   const [templates, setTemplates] = useState<Template[]>(() => {
@@ -267,32 +285,6 @@ function App() {
     return [createDefaultTemplate()];
   });
   
-  // Function to create default template
-  function createDefaultTemplate(): Template {
-    return {
-      id: `template-default-${Date.now()}`,
-      inputs: [
-        {
-          id: "input-1",
-          description: "JavaScript code to convert to Scraper format",
-          content: `// Example: Convert this code to use the Scraper class
-const baseAPI = 'https://api.example.com';
-
-async function fetchData() {
-  try {
-    const response = await fetch(\`\${baseAPI}/data\`);
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error fetching data:', error);
-  }
-}
-`
-        }
-      ]
-    };
-  }
-  
   // For auto-resizing textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
@@ -300,12 +292,8 @@ async function fetchData() {
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [editingMessageContent, setEditingMessageContent] = useState("");
   
-  // For template description inline editing
-  const [editingTemplateIndex, setEditingTemplateIndex] = useState<number | null>(null);
-  const [editingInputIndex, setEditingInputIndex] = useState<number | null>(null);
-  const [editingDescription, setEditingDescription] = useState("");
   
-  // For template card resizing
+  // For template card resizing - needed for the Templates component
   const [templateHeights, setTemplateHeights] = useState<Record<string, number>>(() => {
     if (isLocalStorageAvailable()) {
       try {
@@ -321,14 +309,32 @@ async function fetchData() {
     return {};
   });
   
+  // Calculate active examples
+  const activeExamples = examples.filter(ex => activeExampleIds.includes(ex.id));
+  
   // Update token count when input or examples/templates change
   useEffect(() => {
-    if (input.trim()) {
-      const userMessage: Message = { role: 'user', content: input };
+    if (input.trim() || (messageType === 'template' && selectedTemplateIndex !== null)) {
+      let userMessage: Message;
+      
+      if (messageType === 'text') {
+        userMessage = { role: 'user', content: input };
+      } else {
+        // For template messages, combine the template inputs with their values
+        const template = templates[selectedTemplateIndex!];
+        const templateContent = template.inputs.map(inputItem => {
+          const value = templateInputValues[inputItem.id] || '';
+          return `${inputItem.description}:\n${value}`;
+        }).join('\n\n');
+        
+        userMessage = { role: 'user', content: templateContent };
+      }
+      
       const { tokenCount } = generateContentsAndCountTokens(
         messages,
         userMessage,
-        examples,
+        activeExamples, // Use active examples instead of all examples
+        messageType === 'template' ? selectedTemplateIndex : null, // Pass selected template index
         templates,
         formatTemplateBlocks
       );
@@ -339,13 +345,14 @@ async function fetchData() {
       const { tokenCount } = generateContentsAndCountTokens(
         messages,
         null,
-        examples,
+        activeExamples, // Use active examples instead of all examples
+        null, // No template selected when input is empty
         templates,
         formatTemplateBlocks
       );
       setTokenCount(tokenCount);
     }
-  }, [input, messages, examples, templates]);
+  }, [input, messages, activeExampleIds, examples, templates, messageType, selectedTemplateIndex, templateInputValues]);
   
   const resizingRef = useRef<{
     isResizing: boolean;
@@ -383,7 +390,8 @@ async function fetchData() {
     const { tokenCount } = generateContentsAndCountTokens(
       messages,
       null,
-      examples,
+      activeExamples, // Use active examples
+      null, // No template selected initially
       templates,
       formatTemplateBlocks
     );
@@ -447,16 +455,45 @@ async function fetchData() {
   }, [templateHeights]);
   
   const handleSendMessage = async () => {
-    if (!input.trim()) return;
+    // For text messages, require input; for templates, require a selected template
+    if ((messageType === 'text' && !input.trim()) || 
+        (messageType === 'template' && selectedTemplateIndex === null)) {
+      return;
+    }
     
-    // Add user message to chat
+    let userContent = '';
+    
+    // Generate content based on message type
+    if (messageType === 'text') {
+      userContent = input;
+    } else if (messageType === 'template' && selectedTemplateIndex !== null) {
+      // For template messages, combine the template inputs with their values
+      const template = templates[selectedTemplateIndex];
+      userContent = template.inputs.map(inputItem => {
+        const value = templateInputValues[inputItem.id] || '';
+        return `${inputItem.description}:\n${value}`;
+      }).join('\n\n');
+    }
+    
+    // Add user message to chat with active examples
     const userMessage: Message = { 
       role: 'user', 
-      content: input,
-      id: `user-${Date.now()}` 
+      content: userContent,
+      id: `user-${Date.now()}`,
+      activeExampleIds: [...activeExampleIds] // Store the currently active examples with this message
     };
     setMessages(prev => [...prev, userMessage]);
+    
+    // Reset input and template selections
     setInput("");
+    if (messageType === 'template') {
+      // Clear template input values
+      setTemplateInputValues({});
+      // Reset to text mode after sending a template message
+      setMessageType('text');
+      setSelectedTemplateIndex(null);
+    }
+    
     setIsLoading(true);
     
     try {
@@ -464,7 +501,8 @@ async function fetchData() {
       const { contents, tokenCount } = generateContentsAndCountTokens(
         messages, 
         userMessage, 
-        examples, 
+        activeExamples, // Use active examples
+        messageType === 'template' ? selectedTemplateIndex : null, // Only pass selected template
         templates, 
         formatTemplateBlocks
       );
@@ -494,11 +532,12 @@ async function fetchData() {
       const result = await response.json();
       const aiResponse = result.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
       
-      // Add AI response to chat
+      // Add AI response to chat with same active examples as the user message
       setMessages(prev => [...prev, { 
         role: 'assistant', 
         content: aiResponse,
-        id: `assistant-${Date.now()}`
+        id: `assistant-${Date.now()}`,
+        activeExampleIds: [...activeExampleIds] // Store the active examples with the response
       }]);
     } catch (error) {
       console.error("Error calling Gemini API:", error);
@@ -519,7 +558,8 @@ async function fetchData() {
     const { tokenCount } = generateContentsAndCountTokens(
       [],
       null,
-      examples,
+      activeExamples, // Use active examples
+      null, // No template selected when input is empty
       templates,
       formatTemplateBlocks
     );
@@ -534,18 +574,44 @@ async function fetchData() {
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
   const MODEL_ID = "gemini-2.0-flash";
   
+  // New function to toggle example selection
+  const toggleExampleSelection = (exampleId: string) => {
+    setActiveExampleIds(prev => {
+      if (prev.includes(exampleId)) {
+        return prev.filter(id => id !== exampleId);
+      } else {
+        return [...prev, exampleId];
+      }
+    });
+  };
+  
+  // New function to toggle all examples
+  const toggleAllExamples = () => {
+    if (activeExampleIds.length === examples.length) {
+      // If all examples are selected, deselect all
+      setActiveExampleIds([]);
+    } else {
+      // Otherwise, select all examples
+      setActiveExampleIds(examples.map(ex => ex.id));
+    }
+  };
+  
   // Add a new example directly with empty fields in edit mode
   const addNewExample = (type: ExampleType) => {
-    const newExampleId = examples.length;
+    const newExampleId = `example-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const newExample: Example = {
       type,
       firstField: "",
-      secondField: ""
+      secondField: "",
+      id: newExampleId
     };
     setExamples([...examples, newExample]);
     
+    // Automatically add new example to active examples
+    setActiveExampleIds(prev => [...prev, newExampleId]);
+    
     // Put the new example's first field in edit mode
-    setEditingIndex(newExampleId);
+    setEditingIndex(examples.length);
     setEditingField('firstField');
     setEditValue("");
   };
@@ -608,25 +674,8 @@ async function fetchData() {
     setExamples(updatedExamples);
   };
   
-  // Template management functions
-  const addTemplate = () => {
-    const template: Template = {
-      id: `template-${Date.now()}`,
-      inputs: [
-        {
-          id: `input-${Date.now()}`,
-          description: "New input",
-          content: ""
-        }
-      ]
-    };
-    setTemplates([...templates, template]);
-  };
-  
-  const removeTemplate = (index: number) => {
-    setTemplates(templates.filter((_, i) => i !== index));
-  };
-  
+
+ 
   // Debug localStorage on component mount
   useEffect(() => {
     if (isLocalStorageAvailable()) {
@@ -684,6 +733,12 @@ async function fetchData() {
     setMessages(truncatedMessages);
     
     const selectedMessage = messages[index];
+    
+    // Restore examples that were active for this message
+    if (selectedMessage.activeExampleIds) {
+      setActiveExampleIds(selectedMessage.activeExampleIds);
+    }
+    
     if (selectedMessage.role === 'user') {
       setIsLoading(true);
       
@@ -692,7 +747,8 @@ async function fetchData() {
         const { contents, tokenCount } = generateContentsAndCountTokens(
           truncatedMessages,
           null,
-          examples,
+          activeExamples, // Use active examples
+          null, // No template for re-running message
           templates,
           formatTemplateBlocks
         );
@@ -722,11 +778,12 @@ async function fetchData() {
         const result = await response.json();
         const aiResponse = result.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
         
-        // Add AI response to chat
+        // Add AI response to chat with same active examples as the user message
         setMessages(prev => [...prev, { 
           role: 'assistant', 
           content: aiResponse,
-          id: `assistant-${Date.now()}`
+          id: `assistant-${Date.now()}`,
+          activeExampleIds: [...activeExampleIds] // Store the active examples with the response
         }]);
       } catch (error) {
         console.error("Error calling Gemini API:", error);
@@ -741,66 +798,9 @@ async function fetchData() {
     }
   };
 
-  // Function to format template inputs for API
-  const formatTemplateBlocks = (template: Template): string => {
-    return template.inputs.map(input => {
-      return `${input.description}:\n${input.content}`;
-    }).join('\n\n');
-  };
 
-  // Template description inline editing functions
-  const startEditingDescription = (templateIndex: number, inputIndex: number) => {
-    setEditingTemplateIndex(templateIndex);
-    setEditingInputIndex(inputIndex);
-    setEditingDescription(templates[templateIndex].inputs[inputIndex].description);
-  };
-  
-  const saveDescriptionEdit = () => {
-    if (editingTemplateIndex !== null && editingInputIndex !== null && editingDescription.trim()) {
-      const updatedTemplates = [...templates];
-      updatedTemplates[editingTemplateIndex].inputs[editingInputIndex].description = editingDescription;
-      setTemplates(updatedTemplates);
-      cancelDescriptionEdit();
-    }
-  };
-  
-  const cancelDescriptionEdit = () => {
-    setEditingTemplateIndex(null);
-    setEditingInputIndex(null);
-    setEditingDescription("");
-  };
 
-  // Add input to existing template
-  const addInputToExistingTemplate = (templateIndex: number) => {
-    const updatedTemplates = [...templates];
-    const newInputId = `input-${Date.now()}`;
-    updatedTemplates[templateIndex].inputs.push({
-      id: newInputId,
-      description: "New input",
-      content: ""
-    });
-    setTemplates(updatedTemplates);
-    
-    // Immediately put the new input description in edit mode
-    setEditingTemplateIndex(templateIndex);
-    setEditingInputIndex(updatedTemplates[templateIndex].inputs.length - 1);
-    setEditingDescription("New input");
-  };
 
-  // Start resizing
-  const startResizing = (e: React.MouseEvent, templateId: string, currentHeight: number) => {
-    e.preventDefault();
-    resizingRef.current = {
-      isResizing: true,
-      templateId,
-      startY: e.clientY,
-      startHeight: currentHeight
-    };
-    
-    // Add event listeners for mouse move and up
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', stopResizing);
-  };
   
   // Handle mouse movement during resize
   const handleMouseMove = (e: MouseEvent) => {
@@ -848,6 +848,14 @@ async function fetchData() {
       document.removeEventListener('mouseup', stopResizing);
     };
   }, []);
+
+  // Function to restore examples that were active for a message
+  const restoreExamplesFromMessage = (message: Message) => {
+    if (message.activeExampleIds && message.activeExampleIds.length > 0) {
+      setActiveExampleIds(message.activeExampleIds);
+      setShowExampleManager(true);
+    }
+  };
 
   return (
     <div className="min-h-svh bg-background text-foreground antialiased">
@@ -1063,194 +1071,41 @@ async function fetchData() {
           </section>
           
           {/* Templates Section */}
-          <section className="mb-8" id="templates">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold tracking-tight">
-                <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Templates</span>
-              </h2>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium bg-primary/10 text-primary-foreground/90 border-primary-foreground/20 hover:bg-primary/20 transition-colors"
-                onClick={addTemplate}
-              >
-                <PlusCircle className="h-3.5 w-3.5" />
-                Add Template
-              </Button>
-            </div>
-            
-            {/* Template list */}
-            <div className="space-y-4 mb-6">
-              {templates.map((template, index) => (
-                <div key={template.id} className="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all duration-200 relative">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xs font-medium bg-muted/50 py-0.5 px-2.5 rounded-full text-muted-foreground">Template</h3>
-                    <Button 
-                      variant="ghost"
-                      size="sm" 
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors" 
-                      onClick={() => removeTemplate(index)}
-                      title="Delete template"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  
-                  <div 
-                    className="overflow-y-auto mb-4 rounded-lg border border-border/30 p-3 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent bg-card/50"
-                    style={{ 
-                      maxHeight: templateHeights[template.id] || 300,
-                      height: templateHeights[template.id] ? `${templateHeights[template.id]}px` : 'auto'
-                    }}
-                  >
-                    {template.inputs.map((input, idx) => (
-                      <div key={idx} className="mb-4 text-sm">
-                        <div className="p-3 group/input relative">
-                          <div className="mb-2">
-                            {editingTemplateIndex === index && editingInputIndex === idx ? (
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  value={editingDescription}
-                                  onChange={(e) => setEditingDescription(e.target.value)}
-                                  className="flex-1"
-                                  placeholder="Enter description..."
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      saveDescriptionEdit();
-                                    } else if (e.key === 'Escape') {
-                                      cancelDescriptionEdit();
-                                    }
-                                  }}
-                                  autoFocus
-                                />
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0 text-green-500 rounded-full hover:bg-background/90"
-                                  onClick={saveDescriptionEdit}
-                                  title="Save"
-                                >
-                                  <Check className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0 text-muted-foreground rounded-full hover:bg-background/90"
-                                  onClick={cancelDescriptionEdit}
-                                  title="Cancel"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex items-baseline gap-1 group mb-1.5">
-                                <span 
-                                  className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80 cursor-pointer flex items-center gap-1"
-                                  onClick={() => startEditingDescription(index, idx)}
-                                  title="Click to edit description"
-                                >
-                                  {input.description || "Click to add description"}
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm" 
-                                    className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      startEditingDescription(index, idx);
-                                    }}
-                                  >
-                                    <svg 
-                                      width="10" 
-                                      height="10" 
-                                      viewBox="0 0 15 15" 
-                                      fill="none" 
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      className="text-muted-foreground"
-                                    >
-                                      <path 
-                                        d="M11.8536 1.14645C11.6583 0.951184 11.3417 0.951184 11.1465 1.14645L3.71455 8.57836C3.62459 8.66832 3.55263 8.77461 3.50251 8.89155L2.04044 12.303C1.9599 12.491 2.00189 12.709 2.14646 12.8536C2.29103 12.9981 2.50905 13.0401 2.69697 12.9596L6.10847 11.4975C6.2254 11.4474 6.3317 11.3754 6.42166 11.2855L13.8536 3.85355C14.0488 3.65829 14.0488 3.34171 13.8536 3.14645L11.8536 1.14645ZM4.42166 9.28547L11.5 2.20711L12.7929 3.5L5.71455 10.5784L4.21924 11.2192L3.78081 10.7808L4.42166 9.28547Z" 
-                                        fill="currentColor" 
-                                        fillRule="evenodd" 
-                                        clipRule="evenodd"
-                                      />
-                                    </svg>
-                                  </Button>
-                                </span>
-                                <div className="flex-grow ml-1 border-t border-dashed border-border/30"></div>
-                              </div>
-                            )}
-                          </div>
-                          <Textarea
-                            value={input.content}
-                            onChange={(e) => {
-                              const updatedTemplates = [...templates];
-                              updatedTemplates[index].inputs[idx].content = e.target.value;
-                              setTemplates(updatedTemplates);
-                            }}
-                            className="w-full p-3 text-sm border rounded-lg bg-background/60 hover:bg-background resize-none min-h-[80px] max-h-[500px] overflow-y-auto focus:outline-none focus:ring-1 focus:ring-border transition-colors duration-200"
-                            placeholder="Enter your input here..."
-                          />
-                          
-                          {/* Delete input button - appears on hover */}
-                          {template.inputs.length > 1 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="absolute top-2 right-2 h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/input:opacity-100 transition-opacity rounded-full z-10"
-                              onClick={() => {
-                                const updatedTemplates = [...templates];
-                                updatedTemplates[index].inputs = updatedTemplates[index].inputs.filter((_, i) => i !== idx);
-                                setTemplates(updatedTemplates);
-                              }}
-                              title="Remove this input"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    
-                    {/* Subtle add input button */}
-                    <div className="flex justify-center">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-all rounded-full px-4 hover:bg-muted/80"
-                        onClick={() => addInputToExistingTemplate(index)}
-                        title="Add another input field"
-                      >
-                        <PlusCircle className="h-3.5 w-3.5" />
-                        <span>Add input</span>
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="mb-2 text-xs flex justify-between items-center">
-                    <span className="text-muted-foreground">
-                      {template.inputs.length} Input {template.inputs.length === 1 ? 'Field' : 'Fields'}
-                    </span>
-                  </div>
-                  
-                  {/* Resize handle */}
-                  <div 
-                    className="absolute bottom-0 left-0 right-0 h-4 cursor-ns-resize flex justify-center items-center hover:bg-muted/30 rounded-b-xl transition-colors duration-200" 
-                    onMouseDown={(e) => startResizing(e, template.id, templateHeights[template.id] || 300)}
-                    title="Drag to resize"
-                  >
-                    <div className="w-10 h-[2px] bg-muted-foreground/30 rounded-full" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <Templates 
+            templates={templates}
+            setTemplates={setTemplates}
+            templateHeights={templateHeights}
+            setTemplateHeights={setTemplateHeights}
+          />
           
           {/* Chat messages */}
           <section className="mb-48" id="chat">
-            <h2 className="text-xl font-semibold tracking-tight mb-4">
+            <h2 className="text-xl font-semibold tracking-tight mb-4 flex items-center justify-between">
               <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Conversation</span>
+              
+              {/* Show active examples badge in conversation heading */}
+              {activeExampleIds.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="text-xs text-muted-foreground bg-muted/60 px-3 py-1 rounded-full flex items-center gap-1">
+                    <span>{activeExampleIds.length} Example{activeExampleIds.length !== 1 ? 's' : ''} Active</span>
+                    <button 
+                      className="text-muted-foreground/80 hover:text-muted-foreground"
+                      onClick={() => setShowExampleManager(!showExampleManager)}
+                      title={showExampleManager ? "Hide example selector" : "Show example selector"}
+                    >
+                      {showExampleManager ? (
+                        <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M11.7816 4.03157C12.0062 3.80702 12.0062 3.44295 11.7816 3.2184C11.5571 2.99385 11.193 2.99385 10.9685 3.2184L7.50005 6.68682L4.03164 3.2184C3.80708 2.99385 3.44301 2.99385 3.21846 3.2184C2.99391 3.44295 2.99391 3.80702 3.21846 4.03157L6.68688 7.49999L3.21846 10.9684C2.99391 11.193 2.99391 11.557 3.21846 11.7816C3.44301 12.0061 3.80708 12.0061 4.03164 11.7816L7.50005 8.31316L10.9685 11.7816C11.193 12.0061 11.5571 12.0061 11.7816 11.7816C12.0062 11.557 12.0062 11.193 11.7816 10.9684L8.31322 7.49999L11.7816 4.03157Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                        </svg>
+                      ) : (
+                        <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M4.18179 6.18181C4.35753 6.00608 4.64245 6.00608 4.81819 6.18181L7.49999 8.86362L10.1818 6.18181C10.3575 6.00608 10.6424 6.00608 10.8182 6.18181C10.9939 6.35755 10.9939 6.64247 10.8182 6.81821L7.81819 9.81821C7.73379 9.9026 7.61934 9.95001 7.49999 9.95001C7.38064 9.95001 7.26618 9.9026 7.18179 9.81821L4.18179 6.81821C4.00605 6.64247 4.00605 6.35755 4.18179 6.18181Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </h2>
             <div className="space-y-4 mb-16 rounded-2xl border p-5 bg-card/30 backdrop-blur-sm min-h-[300px]">
               {messages.length === 0 ? (
@@ -1259,7 +1114,13 @@ async function fetchData() {
                     Add examples above, then start a conversation
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    The AI will follow the patterns you've demonstrated in your examples
+                    {examples.length > 0 ? (
+                      activeExampleIds.length > 0 ? 
+                        `The AI will follow the patterns from your ${activeExampleIds.length} selected examples` :
+                        "Select examples to guide the AI's responses"
+                    ) : (
+                      "Create examples to guide the AI's responses"
+                    )}
                   </p>
                 </div>
               ) : (
@@ -1337,6 +1198,20 @@ async function fetchData() {
                         </div>
                       ) : (
                         <div className="whitespace-pre-wrap overflow-hidden break-words">
+                          {/* Show example indicator for messages that used examples */}
+                          {message.activeExampleIds && message.activeExampleIds.length > 0 && (
+                            <div 
+                              className="mb-2 text-xs text-muted-foreground flex items-center gap-1 cursor-pointer hover:text-foreground/80 transition-colors"
+                              onClick={() => restoreExamplesFromMessage(message)}
+                              title="Click to restore these examples as active"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1.90321 7.29677C1.90321 10.341 4.11041 12.4147 6.58893 12.8439C6.87255 12.893 7.06266 13.1627 7.01355 13.4464C6.96444 13.73 6.69471 13.9201 6.41109 13.871C3.49942 13.3668 0.86084 10.9127 0.86084 7.29677C0.860839 5.76009 1.55996 4.55245 2.37639 3.63377C2.96124 2.97568 3.63034 2.44135 4.16846 2.03202L2.53205 2.03202C2.25591 2.03202 2.03205 1.80816 2.03205 1.53202C2.03205 1.25588 2.25591 1.03202 2.53205 1.03202L5.53205 1.03202C5.80819 1.03202 6.03205 1.25588 6.03205 1.53202L6.03205 4.53202C6.03205 4.80816 5.80819 5.03202 5.53205 5.03202C5.25591 5.03202 5.03205 4.80816 5.03205 4.53202L5.03205 2.68645L5.03054 2.68759L5.03045 2.68766L5.03044 2.68767L5.03043 2.68767C4.45896 3.11868 3.76059 3.64538 3.15554 4.3262C2.44102 5.13021 1.90321 6.10154 1.90321 7.29677ZM13.0109 7.70321C13.0109 4.69115 10.8505 2.6296 8.40384 2.17029C8.12093 2.11718 7.93465 1.84479 7.98776 1.56188C8.04087 1.27898 8.31326 1.0927 8.59616 1.14581C11.4704 1.68541 14.0532 4.12605 14.0532 7.70321C14.0532 9.23988 13.3541 10.4475 12.5377 11.3662C11.9528 12.0243 11.2837 12.5586 10.7456 12.968L12.3821 12.968C12.6582 12.968 12.8821 13.1918 12.8821 13.468C12.8821 13.7441 12.6582 13.968 12.3821 13.968L9.38205 13.968C9.10591 13.968 8.88205 13.7441 8.88205 13.468L8.88205 10.468C8.88205 10.1918 9.10591 9.96796 9.38205 9.96796C9.65819 9.96796 9.88205 10.1918 9.88205 10.468L9.88205 12.3135L9.88362 12.3123C10.4551 11.8813 11.1535 11.3546 11.7585 10.6738C12.4731 9.86976 13.0109 8.89844 13.0109 7.70321Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                              </svg>
+                              <span>Using {message.activeExampleIds.length} example{message.activeExampleIds.length !== 1 ? 's' : ''}</span>
+                            </div>
+                          )}
+                          
                           {message.role === 'assistant' ? (
                             <div className="markdown-wrapper p-0">
                               <ReactMarkdown
@@ -1472,10 +1347,192 @@ async function fetchData() {
           </section>
         </div>
         
-        {/* Input area - Updated with larger size and no focus effects */}
+        {/* Input area - Updated with message type selection */}
         <div className="fixed bottom-0 left-0 right-0 backdrop-blur-xl bg-background/80 border-t border-border/30 py-6 pb-8 sm:pb-16">
-          <div className="max-w-5xl mx-auto px-6 flex gap-3">
+          <div className="max-w-5xl mx-auto px-6">
+            {/* UI Controls Section with clear separation */}
+            <div className="mb-4">
+              {/* Combined control row for Examples and Message Type */}
+              <div className="flex justify-between items-center mb-3 pb-3 border-b border-border/20">
+                {/* Examples Selection Section - Left side */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium">Few-Shot Learning:</span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="rounded-full px-4 h-8 text-xs font-medium transition-colors flex items-center gap-1.5 bg-card/80 hover:bg-card"
+                    onClick={() => setShowExampleManager(!showExampleManager)}
+                  >
+                    <svg 
+                      width="12" 
+                      height="12" 
+                      viewBox="0 0 15 15" 
+                      fill="none" 
+                      xmlns="http://www.w3.org/2000/svg" 
+                      className={`mr-1 transition-transform duration-200 ${showExampleManager ? 'rotate-180' : ''}`}
+                    >
+                      <path d="M4.18179 6.18181C4.35753 6.00608 4.64245 6.00608 4.81819 6.18181L7.49999 8.86362L10.1818 6.18181C10.3575 6.00608 10.6424 6.00608 10.8182 6.18181C10.9939 6.35755 10.9939 6.64247 10.8182 6.81821L7.81819 9.81821C7.73379 9.9026 7.61934 9.95001 7.49999 9.95001C7.38064 9.95001 7.26618 9.9026 7.18179 9.81821L4.18179 6.81821C4.00605 6.64247 4.00605 6.35755 4.18179 6.18181Z" 
+                        fill="currentColor" 
+                        fillRule="evenodd" 
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    Active Examples 
+                    <span className="inline-flex items-center justify-center bg-card text-muted-foreground text-[10px] rounded-full h-5 min-w-[20px] px-1.5 ml-1 border border-border/40">
+                      {activeExampleIds.length}
+                    </span>
+                  </Button>
+                </div>
+                
+                {/* Message Type Selector - Right side */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium">Message Type:</span>
+                  <div className="flex gap-1 p-1 bg-muted/60 rounded-full">
+                    <Button
+                      variant={messageType === 'text' ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`rounded-full px-4 h-7 text-xs font-medium transition-colors ${
+                        messageType === 'text' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted/80'
+                      }`}
+                      onClick={() => {
+                        setMessageType('text');
+                        setSelectedTemplateIndex(null);
+                      }}
+                    >
+                      Text
+                    </Button>
+                    <Button
+                      variant={messageType === 'template' ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`rounded-full px-4 h-7 text-xs font-medium transition-colors ${
+                        messageType === 'template' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted/80'
+                      }`}
+                      onClick={() => setMessageType('template')}
+                    >
+                      Template
+                    </Button>
+                  </div>
+                  
+                  {/* Template selector - Only visible when template mode is selected */}
+                  {messageType === 'template' && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full px-4 h-7 text-xs font-medium transition-colors bg-card/80 hover:bg-card"
+                        >
+                          {selectedTemplateIndex !== null
+                            ? `Template ${selectedTemplateIndex + 1}`
+                            : 'Select Template'}
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40 rounded-xl shadow-lg p-1 border-border/30">
+                        {templates.map((template, index) => (
+                          <DropdownMenuItem
+                            key={template.id}
+                            onClick={() => setSelectedTemplateIndex(index)}
+                            className="cursor-pointer rounded-lg py-2 transition-colors"
+                          >
+                            Template {index + 1}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+                
+                {/* Token count indicator moved to far right */}
+                <div 
+                  className="text-xs text-muted-foreground/70 bg-background/80 px-2 py-1 rounded-md shadow-sm backdrop-blur-sm hover:bg-background cursor-pointer group ml-2"
+                  title="Estimated token count for the entire API request"
+                >
+                  ~{tokenCount.toLocaleString()} tokens
+                  <div className="hidden group-hover:block absolute bottom-full right-0 mb-2 w-48 bg-background/95 border border-border shadow-lg rounded-lg p-2 text-xs z-10">
+                    <p className="font-medium mb-1">Token Estimate:</p>
+                    <p className="mb-1">• {activeExampleIds.length} Active Examples</p>
+                    <p className="mb-1">• Templates</p>
+                    <p className="mb-1">• Conversation history</p>
+                    {((messageType === 'text' && input.trim()) || 
+                      (messageType === 'template' && selectedTemplateIndex !== null)) && 
+                      <p className="mb-1">• Current message</p>}
+                    <p className="mt-2 pt-1 border-t border-border/50 text-[10px] font-medium">Based on ~4 chars per token</p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Example Manager Dropdown */}
+              {showExampleManager && (
+                <div className="mb-4 bg-card/60 backdrop-blur-sm rounded-xl border p-3 animate-in fade-in duration-150 slide-in-from-top-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="text-sm font-medium">Example Selection</div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs rounded-md"
+                        onClick={toggleAllExamples}
+                      >
+                        {activeExampleIds.length === examples.length ? "Deselect All" : "Select All"}
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {examples.length === 0 ? (
+                    <div className="text-sm text-muted-foreground p-2 flex items-center justify-between">
+                      <span>No examples available.</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-3 text-xs rounded-md"
+                        onClick={() => {
+                          // Create a default example if none exist
+                          addNewExample('input-output');
+                          // Scroll to examples section
+                          document.getElementById('examples')?.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                      >
+                        Create Example
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-[200px] overflow-y-auto pr-1">
+                      {examples.map((example, index) => {
+                        const isActive = activeExampleIds.includes(example.id);
+                        const labels = exampleTypeLabels[example.type];
+                        
+                        return (
+                          <div 
+                            key={example.id}
+                            className={`p-2 rounded-lg border cursor-pointer transition-colors text-xs ${
+                              isActive 
+                                ? 'border-primary/40 bg-primary/10 hover:bg-primary/20' 
+                                : 'border-border/40 hover:bg-card/80'
+                            }`}
+                            onClick={() => toggleExampleSelection(example.id)}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="font-medium">Example {index + 1}</div>
+                              <div className={`h-3 w-3 rounded-full ${isActive ? 'bg-primary' : 'bg-muted-foreground/30'}`}></div>
+                            </div>
+                            <div className="line-clamp-1 text-muted-foreground">
+                              {labels.first}: {example.firstField.substring(0, 30)}
+                              {example.firstField.length > 30 && '...'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Message Input Area */}
+            <div className="flex gap-3">
             <div className="flex-1 relative">
+                {messageType === 'text' ? (
               <Textarea
                 ref={textareaRef}
                 value={input}
@@ -1494,24 +1551,38 @@ async function fetchData() {
                     : '60px' 
                 }}
               />
-              {/* Token count indicator with hover details */}
-              <div 
-                className="absolute bottom-3 right-3 text-xs text-muted-foreground/70 bg-background/80 px-2 py-1 rounded-md shadow-sm backdrop-blur-sm hover:bg-background cursor-pointer group"
-                title="Estimated token count for the entire API request"
-              >
-                ~{tokenCount.toLocaleString()} tokens
-                <div className="hidden group-hover:block absolute bottom-full right-0 mb-2 w-48 bg-background/95 border border-border shadow-lg rounded-lg p-2 text-xs">
-                  <p className="font-medium mb-1">Token Estimate:</p>
-                  <p className="mb-1">• Examples + Templates</p>
-                  <p className="mb-1">• Conversation history</p>
-                  {input.trim() && <p className="mb-1">• Current message</p>}
-                  <p className="mt-2 pt-1 border-t border-border/50 text-[10px] font-medium">Based on ~4 chars per token</p>
+                ) : (
+                  <div className="bg-background border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-200">
+                    {selectedTemplateIndex !== null ? (
+                      <div className="space-y-4">
+                        {templates[selectedTemplateIndex].inputs.map((input, idx) => (
+                          <div key={input.id} className="space-y-2">
+                            <label className="text-xs font-medium text-muted-foreground">{input.description}</label>
+                            <Textarea
+                              value={templateInputValues[input.id] || ''}
+                              onChange={(e) => {
+                                setTemplateInputValues(prev => ({
+                                  ...prev,
+                                  [input.id]: e.target.value
+                                }));
+                              }}
+                              placeholder={`Enter value for this template...`}
+                              className="w-full resize-none overflow-y-auto bg-background/50 text-foreground rounded-lg min-h-[60px] max-h-[180px] py-3 px-3 border-border/50 focus:outline-none focus:border-border focus:ring-1 focus:ring-border/50 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                            />
                 </div>
+                        ))}
               </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-[60px] text-muted-foreground text-sm">
+                        Select a template from the dropdown above
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
             <Button 
               onClick={handleSendMessage} 
-              disabled={isLoading} 
+                disabled={isLoading || (messageType === 'template' && selectedTemplateIndex === null)} 
               className="rounded-full h-12 w-12 p-0 flex items-center justify-center flex-shrink-0 shadow-sm hover:shadow transition-all duration-200"
             >
               <SendIcon className="h-5 w-5" />
@@ -1523,6 +1594,7 @@ async function fetchData() {
             >
               Clear
             </Button>
+            </div>
           </div>
         </div>
       </main>
