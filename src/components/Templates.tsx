@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
+import { PlusCircle, X } from "lucide-react";
+import { EditableText } from "@/components/ui/editable-text";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { PlusCircle, X, Check } from "lucide-react";
 
 // Define Template types
 export type Template = {
@@ -185,84 +185,21 @@ export default function Templates({
               {template.inputs.map((input, idx) => (
                 <div key={idx} className="mb-5 text-sm last:mb-1">
                   <div className="p-3 group/input relative">
-                    <div className="mb-3">
-                      {editingTemplateIndex === index && editingInputIndex === idx ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={editingDescription}
-                            onChange={(e) => setEditingDescription(e.target.value)}
-                            className="flex-1"
-                            placeholder="Enter description..."
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                saveDescriptionEdit();
-                              } else if (e.key === 'Escape') {
-                                cancelDescriptionEdit();
-                              }
-                            }}
-                            autoFocus
-                          />
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-green-500 rounded-full hover:bg-background/90"
-                            onClick={saveDescriptionEdit}
-                            title="Save"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground rounded-full hover:bg-background/90"
-                            onClick={cancelDescriptionEdit}
-                            title="Cancel"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-baseline gap-1 group mb-2">
-                          <span 
-                            className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80 cursor-pointer flex items-center gap-1"
-                            onClick={() => startEditingDescription(index, idx)}
-                            title="Click to edit description"
-                          >
-                            {input.description || "Click to add description"}
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                startEditingDescription(index, idx);
-                              }}
-                            >
-                              <svg 
-                                width="10" 
-                                height="10" 
-                                viewBox="0 0 15 15" 
-                                fill="none" 
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="text-muted-foreground"
-                              >
-                                <path 
-                                  d="M11.8536 1.14645C11.6583 0.951184 11.3417 0.951184 11.1465 1.14645L3.71455 8.57836C3.62459 8.66832 3.55263 8.77461 3.50251 8.89155L2.04044 12.303C1.9599 12.491 2.00189 12.709 2.14646 12.8536C2.29103 12.9981 2.50905 13.0401 2.69697 12.9596L6.10847 11.4975C6.2254 11.4474 6.3317 11.3754 6.42166 11.2855L13.8536 3.85355C14.0488 3.65829 14.0488 3.34171 13.8536 3.14645L11.8536 1.14645ZM4.42166 9.28547L11.5 2.20711L12.7929 3.5L5.71455 10.5784L4.21924 11.2192L3.78081 10.7808L4.42166 9.28547Z" 
-                                  fill="currentColor" 
-                                  fillRule="evenodd" 
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </Button>
-                          </span>
-                          <div className="flex-grow ml-1 border-t border-dashed border-border/30"></div>
-                        </div>
-                      )}
-                    </div>
+                    {/* Description field */}
+                    <EditableText
+                      value={input.description}
+                      onChange={(newValue) => {
+                        const updatedTemplates = [...templates];
+                        updatedTemplates[index].inputs[idx].description = newValue;
+                        setTemplates(updatedTemplates);
+                      }}
+                      multiline={false}
+                      placeholder="Click to add description..."
+                      className="mb-2"
+                    />
 
-                    {/* Content text area with height limit */}
-                    <div className="border border-transparent rounded-lg hover:border-border/30 transition-all duration-150">
+                    {/* Content field */}
+                    <div className="mt-1.5">
                       <Textarea
                         value={input.content}
                         onChange={(e) => {
@@ -270,7 +207,7 @@ export default function Templates({
                           updatedTemplates[index].inputs[idx].content = e.target.value;
                           setTemplates(updatedTemplates);
                         }}
-                        className="w-full p-3 text-sm bg-background/60 hover:bg-background resize-none min-h-[80px] max-h-[500px] overflow-y-auto focus:outline-none focus:ring-1 focus:ring-border transition-colors duration-200 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70 rounded-lg border-0"
+                        className="w-full p-3 text-sm bg-background text-foreground resize-none min-h-[80px] max-h-[500px] overflow-y-auto focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70 rounded-lg border transition-colors duration-200"
                         placeholder="Enter template default value (will be pre-filled when used)..."
                       />
                     </div>
@@ -280,7 +217,7 @@ export default function Templates({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="absolute top-2 right-2 h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/input:opacity-100 transition-opacity rounded-full z-10"
+                        className="absolute top-[-8px] right-[-8px] h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/input:opacity-100 transition-opacity rounded-full z-10"
                         onClick={() => {
                           const updatedTemplates = [...templates];
                           updatedTemplates[index].inputs = updatedTemplates[index].inputs.filter((_, i) => i !== idx);

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { PlusCircle, X, Check, ChevronDown } from "lucide-react";
+import { EditableText } from "@/components/ui/editable-text";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,11 +58,6 @@ export default function Examples({
   showExampleManager,
   setShowExampleManager
 }: ExamplesProps) {
-  // For example field editing
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingField, setEditingField] = useState<'firstField' | 'secondField' | null>(null);
-  const [editValue, setEditValue] = useState("");
-
   // Save examples to localStorage whenever they change
   useEffect(() => {
     if (isLocalStorageAvailable() && (examples.length > 0 || localStorage.getItem(EXAMPLES_STORAGE_KEY))) {
@@ -111,59 +106,6 @@ export default function Examples({
     
     // Automatically add new example to active examples
     setActiveExampleIds(prev => [...prev, newExampleId]);
-    
-    // Put the new example's first field in edit mode
-    setEditingIndex(examples.length);
-    setEditingField('firstField');
-    setEditValue("");
-  };
-
-  // Start editing example field
-  const startEditing = (index: number, field: 'firstField' | 'secondField') => {
-    setEditingIndex(index);
-    setEditingField(field);
-    setEditValue(examples[index][field]);
-  };
-
-  // Save example edit
-  const saveEdit = () => {
-    if (editingIndex !== null && editingField !== null) {
-      const updatedExamples = [...examples];
-      // If it's a new empty example being created, only save if there's content
-      const shouldUpdate = updatedExamples[editingIndex][editingField] !== "" || editValue.trim() !== "";
-      
-      if (shouldUpdate) {
-        updatedExamples[editingIndex] = {
-          ...updatedExamples[editingIndex],
-          [editingField]: editValue
-        };
-        setExamples(updatedExamples);
-      }
-      
-      // If we just edited firstField, move to secondField
-      if (editingField === 'firstField' && updatedExamples[editingIndex].secondField === "") {
-        setEditingField('secondField');
-        setEditValue("");
-      } else {
-        // Otherwise, exit edit mode
-        setEditingIndex(null);
-        setEditingField(null);
-      }
-    }
-  };
-
-  // Cancel example edit
-  const cancelEdit = () => {
-    // Check if this is a new example with empty fields
-    if (editingIndex !== null && 
-        examples[editingIndex].firstField === "" && 
-        examples[editingIndex].secondField === "") {
-      // Remove the empty example
-      setExamples(examples.filter((_, i) => i !== editingIndex));
-    }
-    
-    setEditingIndex(null);
-    setEditingField(null);
   };
 
   // Change example type
@@ -258,108 +200,30 @@ export default function Examples({
               </div>
               <div className="border border-border/30 p-3 rounded-lg bg-card/50">
                 <div className="text-sm">
-                  <div className="mb-5">
-                    <div className="flex items-baseline mb-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.first}</span>
-                      <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
-                    </div>
-                    {editingIndex === index && editingField === 'firstField' ? (
-                      <div className="flex items-start mt-1.5">
-                        <Textarea 
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              saveEdit();
-                            } else if (e.key === 'Escape') {
-                              cancelEdit();
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <div className="flex flex-col ml-2">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
-                            onClick={saveEdit}
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
-                            onClick={cancelEdit}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div 
-                        className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70 transition-all duration-150"
-                        onClick={() => startEditing(index, 'firstField')}
-                      >
-                        {example.firstField || 
-                          <span className="italic text-muted-foreground/70">Click to add content...</span>
-                        }
-                      </div>
-                    )}
-                  </div>
-                  <div className="mb-1">
-                    <div className="flex items-baseline mb-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.second}</span>
-                      <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
-                    </div>
-                    {editingIndex === index && editingField === 'secondField' ? (
-                      <div className="flex items-start mt-1.5">
-                        <Textarea 
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              saveEdit();
-                            } else if (e.key === 'Escape') {
-                              cancelEdit();
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <div className="flex flex-col ml-2">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
-                            onClick={saveEdit}
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
-                            onClick={cancelEdit}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div 
-                        className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70 transition-all duration-150"
-                        onClick={() => startEditing(index, 'secondField')}
-                      >
-                        {example.secondField || 
-                          <span className="italic text-muted-foreground/70">Click to add content...</span>
-                        }
-                      </div>
-                    )}
-                  </div>
+                  {/* First field with label */}
+                  <EditableText
+                    value={example.firstField}
+                    onChange={(newValue) => {
+                      const updatedExamples = [...examples];
+                      updatedExamples[index].firstField = newValue;
+                      setExamples(updatedExamples);
+                    }}
+                    label={labels.first}
+                    placeholder="Click to add content..."
+                    className="mb-5"
+                  />
+                  
+                  {/* Second field with label */}
+                  <EditableText
+                    value={example.secondField}
+                    onChange={(newValue) => {
+                      const updatedExamples = [...examples];
+                      updatedExamples[index].secondField = newValue;
+                      setExamples(updatedExamples);
+                    }}
+                    label={labels.second}
+                    placeholder="Click to add content..."
+                  />
                 </div>
               </div>
             </div>
