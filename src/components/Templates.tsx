@@ -18,7 +18,6 @@ export type TemplateInput = {
 
 // Local storage key for templates
 export const TEMPLATES_STORAGE_KEY = 'few-shot-chatbot-templates';
-export const TEMPLATE_HEIGHTS_STORAGE_KEY = 'few-shot-chatbot-template-heights';
 
 // Check if localStorage is available
 const isLocalStorageAvailable = () => {
@@ -69,15 +68,11 @@ export const formatTemplateBlocks = (template: Template): string => {
 interface TemplatesProps {
   templates: Template[];
   setTemplates: React.Dispatch<React.SetStateAction<Template[]>>;
-  templateHeights: Record<string, number>;
-  setTemplateHeights: React.Dispatch<React.SetStateAction<Record<string, number>>>;
 }
 
 export default function Templates({ 
   templates, 
-  setTemplates,
-  templateHeights,
-  setTemplateHeights 
+  setTemplates
 }: TemplatesProps) {
   // For template description inline editing
   const [editingTemplateIndex, setEditingTemplateIndex] = useState<number | null>(null);
@@ -186,7 +181,7 @@ export default function Templates({
               </Button>
             </div>
             
-            <div className="overflow-y-auto mb-4 rounded-lg border border-border/30 p-3 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent bg-card/50 max-h-[300px]">
+            <div className="rounded-lg border border-border/30 p-3 bg-card/50">
               {template.inputs.map((input, idx) => (
                 <div key={idx} className="mb-5 text-sm last:mb-1">
                   <div className="p-3 group/input relative">
@@ -265,16 +260,20 @@ export default function Templates({
                         </div>
                       )}
                     </div>
-                    <Textarea
-                      value={input.content}
-                      onChange={(e) => {
-                        const updatedTemplates = [...templates];
-                        updatedTemplates[index].inputs[idx].content = e.target.value;
-                        setTemplates(updatedTemplates);
-                      }}
-                      className="w-full p-3 text-sm border rounded-lg bg-background/60 hover:bg-background resize-none min-h-[80px] max-h-[500px] overflow-y-auto focus:outline-none focus:ring-1 focus:ring-border transition-colors duration-200 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent"
-                      placeholder="Enter template default value (will be pre-filled when used)..."
-                    />
+
+                    {/* Content text area with height limit */}
+                    <div className="border border-transparent rounded-lg hover:border-border/30 transition-all duration-150">
+                      <Textarea
+                        value={input.content}
+                        onChange={(e) => {
+                          const updatedTemplates = [...templates];
+                          updatedTemplates[index].inputs[idx].content = e.target.value;
+                          setTemplates(updatedTemplates);
+                        }}
+                        className="w-full p-3 text-sm bg-background/60 hover:bg-background resize-none min-h-[80px] max-h-[500px] overflow-y-auto focus:outline-none focus:ring-1 focus:ring-border transition-colors duration-200 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70 rounded-lg border-0"
+                        placeholder="Enter template default value (will be pre-filled when used)..."
+                      />
+                    </div>
                     
                     {/* Delete input button - appears on hover */}
                     {template.inputs.length > 1 && (
@@ -309,12 +308,6 @@ export default function Templates({
                   <span>Add input</span>
                 </Button>
               </div>
-            </div>
-
-            <div className="text-xs flex justify-between items-center">
-              <span className="text-muted-foreground">
-                {template.inputs.length} Input {template.inputs.length === 1 ? 'Field' : 'Fields'}
-              </span>
             </div>
           </div>
         ))}
