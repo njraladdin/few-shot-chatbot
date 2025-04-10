@@ -187,8 +187,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [tokenCount, setTokenCount] = useState(0);
   
-  // Simplified sidebar state - just one flag for the whole sidebar
+  // Sidebar state - now with individual section toggles
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isExamplesOpen, setIsExamplesOpen] = useState(true);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(true);
   
   // For auto-resizing textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -562,58 +564,122 @@ function App() {
       <div className="flex flex-grow overflow-hidden">
         {/* Sidebar with side-by-side Examples and Templates sections */}
         <div className={`flex-shrink-0 border-r border-border/30 transition-all duration-300 ${
-          isSidebarOpen ? 'w-[40%] max-w-[800px] ' : 'w-0 overflow-hidden'
+          isSidebarOpen 
+            ? (isExamplesOpen && isTemplatesOpen) 
+                ? 'w-[40%] max-w-[1000px]' // Full width when both are open
+                : (isExamplesOpen || isTemplatesOpen)
+                    ? 'w-[30%] max-w-[600px]' // 30% width when only one is open
+                    : 'w-[300px]' // Width for both collapsed sections with titles (150px + 150px)
+            : 'w-0 overflow-hidden'
         }`}>
           {/* Vertical split layout for Examples and Templates */}
           <div className="flex h-full bg-background/50">
             {/* Examples Section - Left side */}
-            <div className="w-1/2 flex flex-col h-full border-r border-border/40">
-              {/* Examples Header */}
-              <div className="h-12 border-b border-border/30 flex items-center justify-center bg-card/40">
-                <h3 className="text-sm font-medium flex items-center gap-2">
-                  <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Examples</span>
-                  {examples.length > 0 && (
-                    <span className="text-xs text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full">
-                      {examples.length}
-                    </span>
+            <div className={`flex flex-col h-full border-r border-border/40 transition-all duration-300 ${
+              !isExamplesOpen
+                ? 'w-[150px]' // Increased width for collapsed state
+                : !isTemplatesOpen
+                  ? 'w-[calc(100%-150px)]' // When templates are collapsed, examples take most space
+                  : 'w-1/2' // Equal split when both are open
+            }`}>
+              {/* Examples Header - Entire header is clickable */}
+              <div 
+                className="h-12 border-b border-border/30 flex items-center bg-card/40 cursor-pointer transition-colors hover:bg-card/80"
+                onClick={() => setIsExamplesOpen(!isExamplesOpen)}
+                title={isExamplesOpen ? "Collapse examples" : "Expand examples"}
+              >
+                <div className={`flex items-center justify-between w-full ${isExamplesOpen ? 'px-3' : 'px-4'}`}>
+                  <h3 className="text-sm font-medium flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+                    <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Examples</span>
+                    {examples.length > 0 && (
+                      <span className="text-xs text-muted-foreground bg-muted/40 px-1.5 py-0 rounded-full flex-shrink-0 min-w-[18px] text-center">
+                        {examples.length}
+                      </span>
+                    )}
+                  </h3>
+                  
+                  {/* Direction indicator - shown as compact version when collapsed */}
+                  {isExamplesOpen ? (
+                    <div className="flex justify-center items-center h-7 w-7 text-muted-foreground flex-shrink-0">
+                      <svg width="14" height="14" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8.84182 3.13514C9.04327 3.32401 9.05348 3.64042 8.86462 3.84188L5.43521 7.49991L8.86462 11.1579C9.05348 11.3594 9.04327 11.6758 8.84182 11.8647C8.64036 12.0535 8.32394 12.0433 8.13508 11.8419L4.38508 7.84188C4.20477 7.64955 4.20477 7.35027 4.38508 7.15794L8.13508 3.15794C8.32394 2.95648 8.64036 2.94628 8.84182 3.13514Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
+                      </svg>
+                    </div>
+                  ) : (
+                    <div className="flex justify-center items-center h-5 w-5 text-muted-foreground bg-transparent flex-shrink-0 ">
+                      <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M6.1584 3.13508C6.35985 2.94621 6.67627 2.95642 6.86514 3.15788L10.6151 7.15788C10.7954 7.3502 10.7954 7.64949 10.6151 7.84182L6.86514 11.8418C6.67627 12.0433 6.35985 12.0535 6.1584 11.8646C5.95694 11.6757 5.94673 11.3593 6.1356 11.1579L9.565 7.49985L6.1356 3.84182C5.94673 3.64036 5.95694 3.32394 6.1584 3.13508Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
+                      </svg>
+                    </div>
                   )}
-                </h3>
+                </div>
               </div>
               
               {/* Examples Content */}
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70 p-4 pb-6">
-                <Examples 
-                  examples={examples} 
-                  setExamples={setExamples} 
-                  activeExampleIds={[]} 
-                  setActiveExampleIds={() => {}}
-                  showExampleManager={false}
-                  setShowExampleManager={() => {}}
-                />
-              </div>
+              {isExamplesOpen && (
+                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70 p-4 pb-6">
+                  <Examples 
+                    examples={examples} 
+                    setExamples={setExamples} 
+                    activeExampleIds={[]} 
+                    setActiveExampleIds={() => {}}
+                    showExampleManager={false}
+                    setShowExampleManager={() => {}}
+                  />
+                </div>
+              )}
             </div>
             
             {/* Templates Section - Right side */}
-            <div className="w-1/2 flex flex-col h-full">
-              {/* Templates Header */}
-              <div className="h-12 border-b border-border/30 flex items-center justify-center bg-card/40">
-                <h3 className="text-sm font-medium flex items-center gap-2">
-                  <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Templates</span>
-                  {templates.length > 0 && (
-                    <span className="text-xs text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full">
-                      {templates.length}
-                    </span>
+            <div className={`flex flex-col h-full transition-all duration-300 ${
+              !isTemplatesOpen
+                ? 'w-[150px]' // Increased width for collapsed state
+                : !isExamplesOpen
+                  ? 'w-[calc(100%-150px)]' // When examples are collapsed, templates take most space
+                  : 'w-1/2' // Equal split when both are open
+            }`}>
+              {/* Templates Header - Now entire header is clickable */}
+              <div 
+                className="h-12 border-b border-border/30 flex items-center bg-card/40 cursor-pointer transition-colors hover:bg-card/80"
+                onClick={() => setIsTemplatesOpen(!isTemplatesOpen)}
+                title={isTemplatesOpen ? "Collapse templates" : "Expand templates"}
+              >
+                <div className={`flex items-center justify-between w-full ${isTemplatesOpen ? 'px-3' : 'px-4'}`}>
+                  <h3 className="text-sm font-medium flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+                    <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Templates</span>
+                    {templates.length > 0 && (
+                      <span className="text-xs text-muted-foreground bg-muted/40 px-1.5 py-0 rounded-full flex-shrink-0 min-w-[18px] text-center">
+                        {templates.length}
+                      </span>
+                    )}
+                  </h3>
+                  
+                  {/* Direction indicator - shown as compact version when collapsed */}
+                  {isTemplatesOpen ? (
+                    <div className="flex justify-center items-center h-7 w-7 text-muted-foreground flex-shrink-0">
+                      <svg width="14" height="14" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8.84182 3.13514C9.04327 3.32401 9.05348 3.64042 8.86462 3.84188L5.43521 7.49991L8.86462 11.1579C9.05348 11.3594 9.04327 11.6758 8.84182 11.8647C8.64036 12.0535 8.32394 12.0433 8.13508 11.8419L4.38508 7.84188C4.20477 7.64955 4.20477 7.35027 4.38508 7.15794L8.13508 3.15794C8.32394 2.95648 8.64036 2.94628 8.84182 3.13514Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
+                      </svg>
+                    </div>
+                  ) : (
+                    <div className="flex justify-center items-center h-5 w-5 text-muted-foreground bg-transparent flex-shrink-0 ">
+                      <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M6.1584 3.13508C6.35985 2.94621 6.67627 2.95642 6.86514 3.15788L10.6151 7.15788C10.7954 7.3502 10.7954 7.64949 10.6151 7.84182L6.86514 11.8418C6.67627 12.0433 6.35985 12.0535 6.1584 11.8646C5.95694 11.6757 5.94673 11.3593 6.1356 11.1579L9.565 7.49985L6.1356 3.84182C5.94673 3.64036 5.95694 3.32394 6.1584 3.13508Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
+                      </svg>
+                    </div>
                   )}
-                </h3>
+                </div>
               </div>
               
               {/* Templates Content */}
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70 p-4 pb-6">
-                <Templates 
-                  templates={templates}
-                  setTemplates={setTemplates}
-                />
-              </div>
+              {isTemplatesOpen && (
+                <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70 p-4 pb-6">
+                  <Templates 
+                    templates={templates}
+                    setTemplates={setTemplates}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -646,12 +712,28 @@ function App() {
               {/* Show examples and templates count in conversation heading */}
               <div className="flex items-center gap-2">
                 {examples.length > 0 && (
-                  <div className="text-xs bg-primary/5 text-primary/90 px-3 py-1 rounded-full flex items-center gap-1 border border-primary/10 transition-colors duration-200 hover:bg-primary/10">
+                  <div 
+                    className="text-xs bg-primary/5 text-primary/90 px-3 py-1 rounded-full flex items-center gap-1 border border-primary/10 transition-colors duration-200 hover:bg-primary/10 cursor-pointer"
+                    onClick={() => {
+                      if (!isSidebarOpen) {
+                        setIsSidebarOpen(true);
+                      }
+                      setIsExamplesOpen(true);
+                    }}
+                  >
                     <span>{examples.length} Example{examples.length !== 1 ? 's' : ''}</span>
                   </div>
                 )}
                 {templates.length > 0 && (
-                  <div className="text-xs bg-primary/5 text-primary/90 px-3 py-1 rounded-full flex items-center gap-1 border border-primary/10 transition-colors duration-200 hover:bg-primary/10">
+                  <div 
+                    className="text-xs bg-primary/5 text-primary/90 px-3 py-1 rounded-full flex items-center gap-1 border border-primary/10 transition-colors duration-200 hover:bg-primary/10 cursor-pointer"
+                    onClick={() => {
+                      if (!isSidebarOpen) {
+                        setIsSidebarOpen(true);
+                      }
+                      setIsTemplatesOpen(true);
+                    }}
+                  >
                     <span>{templates.length} Template{templates.length !== 1 ? 's' : ''}</span>
                   </div>
                 )}
@@ -673,7 +755,7 @@ function App() {
           
           {/* Scrollable Chat Area (Takes Remaining Space) */}
           <main className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70">
-            <div className="max-w-4xl mx-auto px-6 pt-6 pb-6"> {/* Added bottom padding */}
+            <div className="max-w-5xl mx-auto px-6 pt-6 pb-6"> {/* Added bottom padding */}
               {/* Chat messages */}
               <div className="space-y-4 rounded-2xl border border-border/40 p-5 bg-card/20 backdrop-blur-sm min-h-[calc(100vh-260px)] overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70"> {/* Added scrollbar styling */}
                 {messages.length === 0 ? (
