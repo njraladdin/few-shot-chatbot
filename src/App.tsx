@@ -15,7 +15,8 @@ import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import 'highlight.js/styles/github-dark.css'
 import copy from 'copy-to-clipboard'
-import Templates, { Template,  TEMPLATES_STORAGE_KEY, TEMPLATE_HEIGHTS_STORAGE_KEY, createDefaultTemplate, formatTemplateBlocks } from "@/components/Templates"
+import Templates, { Template, TEMPLATES_STORAGE_KEY, TEMPLATE_HEIGHTS_STORAGE_KEY, createDefaultTemplate, formatTemplateBlocks } from "@/components/Templates"
+import Examples, { Example, ExampleType, EXAMPLES_STORAGE_KEY, exampleTypeLabels } from "@/components/Examples"
 
 // Define types for messages, examples and API
 type MessageRole = 'user' | 'assistant';
@@ -25,21 +26,6 @@ type Message = {
   id?: string;
   activeExampleIds?: string[]; // Track which examples were active when the message was sent
 };
-
-
-// Define the Example types for few-shot learning
-type ExampleType = 'input-output' | 'name-content';
-
-type Example = {
-  type: ExampleType;
-  firstField: string;
-  secondField: string;
-  id: string; // Add id for easier reference
-};
-
-// Define Template type for reusable templates with variables
-// Templates are automatically included in the conversation context, similar to examples
-// Template and TemplateInput types are now imported from @/components/Templates
 
 // For message type selection
 type MessageType = 'text' | 'template';
@@ -195,15 +181,6 @@ const isLocalStorageAvailable = () => {
     return false;
   }
 };
-
-// Labels for different example types
-const exampleTypeLabels: Record<ExampleType, { first: string, second: string }> = {
-  'input-output': { first: 'Input', second: 'Output' },
-  'name-content': { first: 'Name', second: 'Content' },
-};
-
-// localStorage key for saving examples
-const EXAMPLES_STORAGE_KEY = 'few-shot-chatbot-examples';
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -398,23 +375,6 @@ function App() {
     setTokenCount(tokenCount);
   }, []);
   
-  // Load examples from localStorage on component mount - this is now redundant but kept as a backup
-  useEffect(() => {
-    if (isLocalStorageAvailable()) {
-      try {
-        const savedExamples = localStorage.getItem(EXAMPLES_STORAGE_KEY);
-        console.log('Retrieved from localStorage:', savedExamples);
-        if (savedExamples && examples.length === 0) {
-          const parsedExamples = JSON.parse(savedExamples);
-          setExamples(parsedExamples);
-          console.log('Examples loaded from localStorage:', parsedExamples);
-        }
-      } catch (error) {
-        console.error("Failed to parse saved examples:", error);
-      }
-    }
-  }, []);
-  
   // Save examples to localStorage whenever they change
   useEffect(() => {
     if (isLocalStorageAvailable() && (examples.length > 0 || localStorage.getItem(EXAMPLES_STORAGE_KEY))) {
@@ -566,144 +526,10 @@ function App() {
     setTokenCount(tokenCount);
   };
   
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingField, setEditingField] = useState<'firstField' | 'secondField' | null>(null);
-  const [editValue, setEditValue] = useState("");
-
   // API configuration from environment variables
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
   const MODEL_ID = "gemini-2.0-flash";
   
-  // New function to toggle example selection
-  const toggleExampleSelection = (exampleId: string) => {
-    setActiveExampleIds(prev => {
-      if (prev.includes(exampleId)) {
-        return prev.filter(id => id !== exampleId);
-      } else {
-        return [...prev, exampleId];
-      }
-    });
-  };
-  
-  // New function to toggle all examples
-  const toggleAllExamples = () => {
-    if (activeExampleIds.length === examples.length) {
-      // If all examples are selected, deselect all
-      setActiveExampleIds([]);
-    } else {
-      // Otherwise, select all examples
-      setActiveExampleIds(examples.map(ex => ex.id));
-    }
-  };
-  
-  // Add a new example directly with empty fields in edit mode
-  const addNewExample = (type: ExampleType) => {
-    const newExampleId = `example-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const newExample: Example = {
-      type,
-      firstField: "",
-      secondField: "",
-      id: newExampleId
-    };
-    setExamples([...examples, newExample]);
-    
-    // Automatically add new example to active examples
-    setActiveExampleIds(prev => [...prev, newExampleId]);
-    
-    // Put the new example's first field in edit mode
-    setEditingIndex(examples.length);
-    setEditingField('firstField');
-    setEditValue("");
-  };
-  
-  // Edit example field
-  const startEditing = (index: number, field: 'firstField' | 'secondField') => {
-    setEditingIndex(index);
-    setEditingField(field);
-    setEditValue(examples[index][field]);
-  };
-  
-  // Save example edit
-  const saveEdit = () => {
-    if (editingIndex !== null && editingField !== null) {
-      const updatedExamples = [...examples];
-      // If it's a new empty example being created, only save if there's content
-      const shouldUpdate = updatedExamples[editingIndex][editingField] !== "" || editValue.trim() !== "";
-      
-      if (shouldUpdate) {
-        updatedExamples[editingIndex] = {
-          ...updatedExamples[editingIndex],
-          [editingField]: editValue
-        };
-        setExamples(updatedExamples);
-      }
-      
-      // If we just edited firstField, move to secondField
-      if (editingField === 'firstField' && updatedExamples[editingIndex].secondField === "") {
-        setEditingField('secondField');
-        setEditValue("");
-      } else {
-        // Otherwise, exit edit mode
-        setEditingIndex(null);
-        setEditingField(null);
-      }
-    }
-  };
-  
-  // Cancel example edit
-  const cancelEdit = () => {
-    // Check if this is a new example with empty fields
-    if (editingIndex !== null && 
-        examples[editingIndex].firstField === "" && 
-        examples[editingIndex].secondField === "") {
-      // Remove the empty example
-      setExamples(examples.filter((_, i) => i !== editingIndex));
-    }
-    
-    setEditingIndex(null);
-    setEditingField(null);
-  };
-  
-  // Change example type
-  const changeExampleType = (index: number, type: ExampleType) => {
-    const updatedExamples = [...examples];
-    updatedExamples[index] = {
-      ...updatedExamples[index],
-      type
-    };
-    setExamples(updatedExamples);
-  };
-  
-
- 
-  // Debug localStorage on component mount
-  useEffect(() => {
-    if (isLocalStorageAvailable()) {
-      console.log('✓ localStorage is available');
-      try {
-        // Store a test message specifically for the examples
-        localStorage.setItem('localStorage-test', 'This is a test message for localStorage');
-        console.log('✓ Test message successfully stored in localStorage');
-        
-        // Try retrieving the examples
-        const examplesData = localStorage.getItem(EXAMPLES_STORAGE_KEY);
-        console.log(`Examples data in localStorage: ${examplesData ? 'Data found' : 'No data found'}`);
-        if (examplesData) {
-          console.log('Examples data content:', examplesData);
-        }
-      } catch (error) {
-        console.error('❌ Error when testing localStorage:', error);
-      }
-    } else {
-      console.error('❌ localStorage is NOT available!');
-    }
-  }, []);
-
-  // Remove example
-  const removeExample = (index: number) => {
-    setExamples(examples.filter((_, i) => i !== index));
-  };
-
   // Functions for editing messages
   const startEditingMessage = (index: number) => {
     setEditingMessageIndex(index);
@@ -798,10 +624,6 @@ function App() {
     }
   };
 
-
-
-
-  
   // Handle mouse movement during resize
   const handleMouseMove = (e: MouseEvent) => {
     if (!resizingRef.current.isResizing) return;
@@ -882,193 +704,15 @@ function App() {
       <main className="pt-20 pb-32">
    
         <div className="max-w-5xl mx-auto px-6">  
-          {/* Examples Section */}
-          <section className="mb-8" id="examples">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold tracking-tight">
-                <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Examples</span>
-              </h2>
-              
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium bg-primary/10 text-primary-foreground/90 border-primary-foreground/20 hover:bg-primary/20 transition-colors">
-                    <PlusCircle className="h-3.5 w-3.5" />
-                    Add Example
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40 rounded-xl shadow-lg p-1 border-border/30">
-                  <DropdownMenuItem 
-                    onClick={() => addNewExample('input-output')}
-                    className="cursor-pointer rounded-lg py-2 transition-colors"
-                  >
-                    Input-Output
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => addNewExample('name-content')}
-                    className="cursor-pointer rounded-lg py-2 transition-colors"
-                  >
-                    Name-Content
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            
-            {/* Example list */}
-            <div className="space-y-4 mb-6">
-              {examples.map((example, index) => {
-                const labels = exampleTypeLabels[example.type];
-                return (
-                  <div key={index} className="border rounded-2xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all duration-200">
-                    <div className="flex justify-between mb-3">
-                      <div className="font-medium text-sm text-muted-foreground flex items-center">
-                        <span className="bg-primary/10 text-primary-foreground/90 py-0.5 px-2.5 rounded-full text-xs">Example {index + 1}</span>
-                        <div className="ml-2">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 flex items-center gap-1 px-2.5 text-xs font-normal rounded-full bg-muted/50 hover:bg-muted/80 transition-colors"
-                              >
-                                {example.type === 'input-output' ? 'Input-Output' : 'Name-Content'}
-                                <ChevronDown className="h-3 w-3" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="w-32 rounded-xl shadow-lg">
-                              <DropdownMenuItem 
-                                onClick={() => changeExampleType(index, 'input-output')}
-                                className={`cursor-pointer rounded-lg ${example.type === 'input-output' ? 'font-medium' : ''}`}
-                              >
-                                Input-Output
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => changeExampleType(index, 'name-content')}
-                                className={`cursor-pointer rounded-lg ${example.type === 'name-content' ? 'font-medium' : ''}`}
-                              >
-                                Name-Content
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors" 
-                        onClick={() => removeExample(index)}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                    <div className="text-sm">
-                      <div className="mb-4">
-                        <div className="flex items-baseline mb-1">
-                          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.first}</span>
-                          <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
-                        </div>
-                        {editingIndex === index && editingField === 'firstField' ? (
-                          <div className="flex items-start mt-1.5">
-                            <Textarea 
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  saveEdit();
-                                } else if (e.key === 'Escape') {
-                                  cancelEdit();
-                                }
-                              }}
-                              autoFocus
-                            />
-                            <div className="flex flex-col ml-2">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
-                                onClick={saveEdit}
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
-                                onClick={cancelEdit}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div 
-                            className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent transition-all duration-150"
-                            onClick={() => startEditing(index, 'firstField')}
-                          >
-                            {example.firstField || 
-                              <span className="italic text-muted-foreground/70">Click to add content...</span>
-                            }
-                          </div>
-                        )}
-                      </div>
-                      <div className="mb-1">
-                        <div className="flex items-baseline mb-1">
-                          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.second}</span>
-                          <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
-                        </div>
-                        {editingIndex === index && editingField === 'secondField' ? (
-                          <div className="flex items-start mt-1.5">
-                            <Textarea 
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  saveEdit();
-                                } else if (e.key === 'Escape') {
-                                  cancelEdit();
-                                }
-                              }}
-                              autoFocus
-                            />
-                            <div className="flex flex-col ml-2">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
-                                onClick={saveEdit}
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
-                                onClick={cancelEdit}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div 
-                            className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent transition-all duration-150"
-                            onClick={() => startEditing(index, 'secondField')}
-                          >
-                            {example.secondField || 
-                              <span className="italic text-muted-foreground/70">Click to add content...</span>
-                            }
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          {/* Examples Section - Now using the Examples component */}
+          <Examples 
+            examples={examples} 
+            setExamples={setExamples} 
+            activeExampleIds={activeExampleIds} 
+            setActiveExampleIds={setActiveExampleIds}
+            showExampleManager={showExampleManager}
+            setShowExampleManager={setShowExampleManager}
+          />
           
           {/* Templates Section */}
           <Templates 
@@ -1462,7 +1106,7 @@ function App() {
                 </div>
               </div>
               
-              {/* Example Manager Dropdown */}
+              {/* Re-add Example Manager Dropdown for the input area */}
               {showExampleManager && (
                 <div className="mb-4 bg-card/60 backdrop-blur-sm rounded-xl border p-3 animate-in fade-in duration-150 slide-in-from-top-2">
                   <div className="flex justify-between items-center mb-2">
@@ -1472,7 +1116,16 @@ function App() {
                         variant="ghost"
                         size="sm"
                         className="h-7 px-2 text-xs rounded-md"
-                        onClick={toggleAllExamples}
+                        onClick={() => {
+                          // Toggle all examples
+                          if (activeExampleIds.length === examples.length) {
+                            // If all examples are selected, deselect all
+                            setActiveExampleIds([]);
+                          } else {
+                            // Otherwise, select all examples
+                            setActiveExampleIds(examples.map(ex => ex.id));
+                          }
+                        }}
                       >
                         {activeExampleIds.length === examples.length ? "Deselect All" : "Select All"}
                       </Button>
@@ -1487,9 +1140,7 @@ function App() {
                         size="sm"
                         className="h-7 px-3 text-xs rounded-md"
                         onClick={() => {
-                          // Create a default example if none exist
-                          addNewExample('input-output');
-                          // Scroll to examples section
+                          // Scroll to examples section to create a new example
                           document.getElementById('examples')?.scrollIntoView({ behavior: 'smooth' });
                         }}
                       >
@@ -1510,7 +1161,16 @@ function App() {
                                 ? 'border-primary/40 bg-primary/10 hover:bg-primary/20' 
                                 : 'border-border/40 hover:bg-card/80'
                             }`}
-                            onClick={() => toggleExampleSelection(example.id)}
+                            onClick={() => {
+                              // Toggle example selection using state setter
+                              setActiveExampleIds(prev => {
+                                if (prev.includes(example.id)) {
+                                  return prev.filter(id => id !== example.id);
+                                } else {
+                                  return [...prev, example.id];
+                                }
+                              });
+                            }}
                           >
                             <div className="flex items-center justify-between mb-1">
                               <div className="font-medium">Example {index + 1}</div>
