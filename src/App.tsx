@@ -1,8 +1,18 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger 
+} from "@/components/ui/dialog"
 
-import { SendIcon, RefreshCw, Check, ChevronDown, Copy, CheckCheck, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { SendIcon, RefreshCw, Check, ChevronDown, Copy, CheckCheck, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,11 +37,23 @@ type Message = {
   activeExampleIds?: string[]; // This field is now deprecated but kept for backward compatibility
 };
 
+// For model selection
+type Model = {
+  name: string;
+  displayName: string;
+  version?: string;
+  description?: string;
+};
+
 // For message type selection
 type MessageType = 'text' | 'template';
 
 // Local storage key for messages
 export const MESSAGES_STORAGE_KEY = 'few-shot-chatbot-messages';
+// Local storage key for selected model
+export const SELECTED_MODEL_STORAGE_KEY = 'few-shot-chatbot-selected-model';
+// Local storage key for API key
+export const API_KEY_STORAGE_KEY = 'few-shot-chatbot-api-key';
 
 // Simple token counter utility (approximation)
 const estimateTokenCount = (text: string): number => {
@@ -47,112 +69,48 @@ const generateContentsAndCountTokens = (
   templates: Template[],
   formatTemplateBlocks: (template: Template) => string
 ): { contents: any[], tokenCount: number } => {
-  let contents: any[] = [];
   let totalText = '';
+  const contents: any[] = [];
   
-  // Add examples with clear labeling if there are any
+  // Build examples section (if any)
   if (examples.length > 0) {
-    // System message explaining examples
-    const exampleIntro = "I'm using FEW-SHOT LEARNING to guide your responses. I'll provide some examples of the format I want you to follow. Please analyze these examples carefully to understand the pattern, and then apply the same pattern to your responses to my actual queries.";
-    contents.push({
-      role: 'user' as const,
-      parts: [{ text: exampleIntro }]
-    });
-    totalText += exampleIntro;
+    // Format all examples into a single message
+    let examplesText = "";
     
-    const exampleResponse = "I understand. I'll use the few-shot learning examples to guide my responses and follow the same patterns you demonstrate.";
-    contents.push({
-      role: 'model' as const,
-      parts: [{ text: exampleResponse }]
-    });
-    totalText += exampleResponse;
-    
-    // Add each example with clear labels
     examples.forEach((example, idx) => {
       const labels = exampleTypeLabels[example.type];
-      
-      const exampleFirst = `EXAMPLE ${idx + 1} - ${labels.first.toUpperCase()}:\n${example.firstField}`;
-      contents.push({
-        role: 'user' as const,
-        parts: [{ text: exampleFirst }]
-      });
-      totalText += exampleFirst;
-      
-      const exampleSecond = `EXAMPLE ${idx + 1} - ${labels.second.toUpperCase()}:\n${example.secondField}`;
-      contents.push({
-        role: 'model' as const,
-        parts: [{ text: exampleSecond }]
-      });
-      totalText += exampleSecond;
+      // Include just the example content with minimal formatting
+      examplesText += `${labels.first}:\n${example.firstField}\n\n`;
+      examplesText += `${labels.second}:\n${example.secondField}\n\n\n`;
     });
     
-    // Add transition messages
-    const transition1 = "Now that you've seen the few-shot learning examples, please respond to my actual queries following the same patterns demonstrated in the examples.";
-    contents.push({
-      role: 'user' as const,
-      parts: [{ text: transition1 }]
+    console.log('[Debug] Examples content:', examplesText);
+    totalText += examplesText;
+    contents.push({ 
+      role: 'user' as const, 
+      parts: [{ text: examplesText }] 
     });
-    totalText += transition1;
-    
-    const transition2 = "I'll respond to your queries using the patterns demonstrated in the few-shot learning examples.";
-    contents.push({
-      role: 'model' as const,
-      parts: [{ text: transition2 }]
-    });
-    totalText += transition2;
   }
   
-  // Add all templates
+  // Build templates section (if any)
   if (templates.length > 0) {
-    // System message explaining templates
-    const templateIntro = "I'm also providing TEMPLATES that you should consider when responding. These templates provide structure or code patterns to use in appropriate contexts.";
-    contents.push({
-      role: 'user' as const,
-      parts: [{ text: templateIntro }]
-    });
-    totalText += templateIntro;
+    // Format all templates into a single message
+    let templatesText = "";
     
-    const templateResponse = "I understand. I'll consider these templates when forming my responses where appropriate.";
-    contents.push({
-      role: 'model' as const,
-      parts: [{ text: templateResponse }]
-    });
-    totalText += templateResponse;
-    
-    // Add each template with clear label
     templates.forEach((template, idx) => {
-      const templateText = `TEMPLATE ${idx + 1}:\n${formatTemplateBlocks(template)}`;
-      contents.push({
-        role: 'user' as const,
-        parts: [{ text: templateText }]
-      });
-      totalText += templateText;
-      
-      const templateConfirm = `I'll use template ${idx + 1} when appropriate in my responses.`;
-      contents.push({
-        role: 'model' as const,
-        parts: [{ text: templateConfirm }]
-      });
-      totalText += templateConfirm;
+      // Include just the formatted template content
+      templatesText += formatTemplateBlocks(template) + "\n\n";
     });
     
-    // Add transition message
-    const transition3 = "Now let's proceed with the conversation, using the templates and examples as appropriate.";
-    contents.push({
-      role: 'user' as const,
-      parts: [{ text: transition3 }]
+    console.log('[Debug] Templates content:', templatesText);
+    totalText += templatesText;
+    contents.push({ 
+      role: 'user' as const, 
+      parts: [{ text: templatesText }] 
     });
-    totalText += transition3;
-    
-    const transition4 = "I'm ready to have our conversation, keeping these templates and examples in mind.";
-    contents.push({
-      role: 'model' as const,
-      parts: [{ text: transition4 }]
-    });
-    totalText += transition4;
   }
   
-  // Add the conversation messages 
+  // Build contents for conversation messages
   const conversationMessages = userMessage ? [...messages, userMessage] : messages;
   const conversationContents = conversationMessages.map(msg => {
     totalText += msg.content;
@@ -162,8 +120,17 @@ const generateContentsAndCountTokens = (
     };
   });
   
-  // Combine everything
-  contents = [...contents, ...conversationContents];
+  // Combine all contents
+  contents.push(...conversationContents);
+  
+  // Log the full conversation payload
+  console.log('[Debug] Full conversation payload:', {
+    examplesCount: examples.length,
+    templatesCount: templates.length,
+    messagesCount: conversationMessages.length,
+    totalTokens: estimateTokenCount(totalText),
+    contents
+  });
   
   // Estimate token count
   const tokenCount = estimateTokenCount(totalText);
@@ -202,6 +169,60 @@ function App() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [tokenCount, setTokenCount] = useState(0);
+  
+  // API key state
+  const [apiKey, setApiKey] = useState<string>(() => {
+    if (isLocalStorageAvailable()) {
+      try {
+        const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+        if (savedApiKey) {
+          return savedApiKey;
+        }
+      } catch (error) {
+        console.error("Failed to load API key from localStorage:", error);
+      }
+    }
+    return import.meta.env.VITE_GEMINI_API_KEY || "";
+  });
+  const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState("");
+  
+  // Function to save API key to localStorage
+  const saveApiKey = (key: string) => {
+    setApiKey(key);
+    if (isLocalStorageAvailable()) {
+      try {
+        localStorage.setItem(API_KEY_STORAGE_KEY, key);
+        console.log('API key saved to localStorage');
+      } catch (error) {
+        console.error("Failed to save API key to localStorage:", error);
+      }
+    }
+  };
+  
+  // Initialize temp API key when dialog opens
+  useEffect(() => {
+    if (isConfigDialogOpen) {
+      setTempApiKey(apiKey);
+    }
+  }, [isConfigDialogOpen, apiKey]);
+  
+  // Model selection state
+  const [models, setModels] = useState<Model[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    if (isLocalStorageAvailable()) {
+      try {
+        const savedModel = localStorage.getItem(SELECTED_MODEL_STORAGE_KEY);
+        if (savedModel) {
+          return savedModel;
+        }
+      } catch (error) {
+        console.error("Failed to load selected model from localStorage:", error);
+      }
+    }
+    return "gemini-2.0-flash"; // Default model
+  });
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
   
   // Sidebar state - now with individual section toggles
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -334,6 +355,48 @@ function App() {
     }
   }, [messages]);
   
+  // Save selected model to localStorage whenever it changes
+  useEffect(() => {
+    if (isLocalStorageAvailable()) {
+      try {
+        localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, selectedModel);
+        console.log('Selected model saved to localStorage:', selectedModel);
+      } catch (error) {
+        console.error("Failed to save selected model to localStorage:", error);
+      }
+    }
+  }, [selectedModel]);
+  
+  // Fetch available models from Google API
+  const fetchModels = async () => {
+    setIsLoadingModels(true);
+    try {
+      // Hardcoded models instead of fetching from API
+      const hardcodedModels = [
+        { name: "gemini-2.5-pro-preview-03-25", displayName: "Gemini 2.5 Pro Preview" },
+        { name: "gemini-2.0-flash", displayName: "Gemini 2.0 Flash" },
+        { name: "gemini-2.0-flash-thinking-exp-01-21", displayName: "Gemini 2.0 Flash Thinking" },
+      ];
+      
+      console.log('Using hardcoded Gemini models:', hardcodedModels);
+      setModels(hardcodedModels);
+      
+      // If the current selectedModel isn't in the list, select the first one
+      if (!hardcodedModels.some((m: Model) => m.name === selectedModel)) {
+        setSelectedModel(hardcodedModels[0].name);
+      }
+    } catch (error) {
+      console.error("Error setting models:", error);
+    } finally {
+      setIsLoadingModels(false);
+    }
+  };
+  
+  // Initialize models on component mount
+  useEffect(() => {
+    fetchModels();
+  }, []);
+  
   // Update token count when input or examples/templates change
   useEffect(() => {
     if (input.trim()) {
@@ -397,6 +460,12 @@ function App() {
       return;
     }
     
+    // Check if API key is set
+    if (!apiKey) {
+      setIsConfigDialogOpen(true);
+      return;
+    }
+    
     // Add user message to chat
     const userMessage: Message = { 
       role: 'user', 
@@ -428,7 +497,7 @@ function App() {
       
       // Call Gemini API
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`, 
+        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`, 
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -440,6 +509,13 @@ function App() {
           })
         }
       );
+      
+      console.log('[Debug] API request sent:', {
+        model: selectedModel,
+        messageCount: contents.length,
+        requestSize: JSON.stringify({contents}).length,
+        timestamp: new Date().toISOString()
+      });
       
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -484,10 +560,6 @@ function App() {
     setTokenCount(tokenCount);
   };
   
-  // API configuration from environment variables
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-  const MODEL_ID = "gemini-2.0-flash";
-  
   // Functions for editing messages
   const startEditingMessage = (index: number) => {
     setEditingMessageIndex(index);
@@ -512,6 +584,12 @@ function App() {
   
   // Run conversation from a specific message
   const runFromMessage = async (index: number) => {
+    // Check if API key is set
+    if (!apiKey) {
+      setIsConfigDialogOpen(true);
+      return;
+    }
+    
     // Keep messages up to and including the selected index
     const truncatedMessages = messages.slice(0, index + 1);
     setMessages(truncatedMessages);
@@ -536,7 +614,7 @@ function App() {
         
         // Call Gemini API
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`, 
+          `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`, 
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -548,6 +626,13 @@ function App() {
             })
           }
         );
+        
+        console.log('[Debug] API request sent:', {
+          model: selectedModel,
+          messageCount: contents.length,
+          requestSize: JSON.stringify({contents}).length,
+          timestamp: new Date().toISOString()
+        });
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
@@ -577,13 +662,19 @@ function App() {
 
   // Add a new function to run examples and templates without a user message
   const handleRunExamplesAndTemplates = async () => {
+    // Check if API key is set
+    if (!apiKey) {
+      setIsConfigDialogOpen(true);
+      return;
+    }
+    
     setIsLoading(true);
     
     try {
       // Create a special system message explaining what we're doing
       const systemMessage: Message = { 
         role: 'user', 
-        content: "Based on the examples and templates I've given you, please respond with your initial analysis or observations. How do you interpret the patterns in the examples, and how would you apply the templates?",
+        content: "Based on the information provided above, please respond following the instructions.",
         id: `system-${Date.now()}`
       };
       
@@ -607,7 +698,7 @@ function App() {
       
       // Call Gemini API
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`, 
+        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`, 
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -619,6 +710,13 @@ function App() {
           })
         }
       );
+      
+      console.log('[Debug] API request sent:', {
+        model: selectedModel,
+        messageCount: contents.length,
+        requestSize: JSON.stringify({contents}).length,
+        timestamp: new Date().toISOString()
+      });
       
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -678,8 +776,46 @@ function App() {
               </a>
             </div>
 
-            {/* Empty div to balance header layout */}
-            <div className="w-9"></div>
+            {/* API key config dialog */}
+            <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="relative text-muted-foreground hover:text-foreground transition-colors duration-200"
+                  title="API key configuration"
+                >
+                  <Settings className="h-5 w-5" />
+                  {!apiKey && (
+                    <div className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></div>
+                  )}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>API Key Configuration</DialogTitle>
+                  <DialogDescription>
+                    Enter your Gemini API key. This will be saved in your browser's local storage.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="mt-4 mb-4">
+                  <Input
+                    value={tempApiKey}
+                    onChange={(e) => setTempApiKey(e.target.value)}
+                    placeholder="Enter Gemini API key"
+                    className="w-full"
+                    type="password"
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsConfigDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={() => {
+                    saveApiKey(tempApiKey);
+                    setIsConfigDialogOpen(false);
+                  }}>Save</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </header>
@@ -692,7 +828,7 @@ function App() {
             ? (isExamplesOpen && isTemplatesOpen) 
                 ? 'w-[40%] max-w-[1000px]' // Full width when both are open
                 : (isExamplesOpen || isTemplatesOpen)
-                    ? 'w-[30%] max-w-[600px]' // 30% width when only one is open
+                    ? 'w-[30%] max-w-[800px]' // 30% width when only one is open
                     : 'w-[300px]' // Width for both collapsed sections with titles (150px + 150px)
             : 'w-0 overflow-hidden'
         }`}>
@@ -816,20 +952,67 @@ function App() {
               <h2 className="text-sm font-medium flex items-center gap-4">
                 <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Conversation</span>
                 
-                {/* Token count in conversation bar */}
-                <div 
-                  className="text-xs text-muted-foreground bg-background/70 px-3 py-1 rounded-full border border-border/20 shadow-sm hover:bg-background cursor-pointer group transition-colors duration-200"
-                  title="Estimated token count for the entire API request"
-                >
-                  ~{tokenCount.toLocaleString()} tokens
-                  <div className="hidden group-hover:block absolute top-full left-0 mt-2 w-48 bg-background/95 border border-border/40 shadow-lg rounded-lg p-2 text-xs z-10">
-                    <p className="font-medium mb-1">Token Estimate:</p>
-                    <p className="mb-1">• {examples.length} Examples</p>
-                    <p className="mb-1">• {templates.length} Templates</p>
-                    <p className="mb-1">• Conversation history</p>
-                    {input.trim() && <p className="mb-1">• Current message</p>}
-                    <p className="mt-2 pt-1 border-t border-border/50 text-[10px] font-medium">Based on ~4 chars per token</p>
+                <div className="flex items-center gap-2">
+                  {/* Token count display */}
+                  <div 
+                    className="text-xs text-muted-foreground bg-background/70 px-3 py-1 rounded-full border border-border/20 shadow-sm hover:bg-background cursor-pointer group transition-colors duration-200 flex items-center gap-2"
+                    title="Estimated token count"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <svg width="10" height="10" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M2.5 4C2.5 3.72386 2.72386 3.5 3 3.5H12C12.2761 3.5 12.5 3.72386 12.5 4C12.5 4.27614 12.2761 4.5 12 4.5H3C2.72386 4.5 2.5 4.27614 2.5 4ZM2.5 8C2.5 7.72386 2.72386 7.5 3 7.5H12C12.2761 7.5 12.5 7.72386 12.5 8C12.5 8.27614 12.2761 8.5 12 8.5H3C2.72386 8.5 2.5 8.27614 2.5 8ZM2.5 12C2.5 11.7239 2.72386 11.5 3 11.5H12C12.2761 11.5 12.5 11.7239 12.5 12C12.5 12.2761 12.2761 12.5 12 12.5H3C2.72386 12.5 2.5 12.2761 2.5 12Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
+                      </svg>
+                      ~{tokenCount.toLocaleString()} tokens
+                    </div>
+                    
+                    {/* Tooltip */}
+                    <div className="hidden group-hover:block absolute top-full left-0 mt-2 w-56 bg-background/95 border border-border/40 shadow-lg rounded-lg p-2 text-xs z-10">
+                      <p className="font-medium mb-1">Token Estimate:</p>
+                      <p className="mb-1">• {examples.length} Examples</p>
+                      <p className="mb-1">• {templates.length} Templates</p>
+                      <p className="mb-1">• Conversation history</p>
+                      {input.trim() && <p className="mb-1">• Current message</p>}
+                      <div className="mt-2 pt-1 border-t border-border/50">
+                        <p className="text-[10px] font-medium">Based on ~4 chars per token</p>
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Model selector dropdown */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="text-xs flex items-center gap-1.5 bg-background/70 text-muted-foreground h-7 px-3 border-border/20 shadow-sm hover:bg-background"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
+                          <path d="M7.28856 0.796908C7.42258 0.734364 7.57742 0.734364 7.71144 0.796908L13.7114 3.59691C13.8875 3.67906 14 3.85574 14 4.05V10.95C14 11.1443 13.8875 11.3209 13.7114 11.4031L7.71144 14.2031C7.57742 14.2656 7.42258 14.2656 7.28856 14.2031L1.28856 11.4031C1.11252 11.3209 1 11.1443 1 10.95V4.05C1 3.85574 1.11252 3.67906 1.28856 3.59691L7.28856 0.796908ZM2 4.80578L7 6.93078V12.9649L2 10.8399V4.80578ZM8 12.9649L13 10.8399V4.80578L8 6.93078V12.9649ZM7.5 6.05672L12.2678 4.02866L7.5 1.80578L2.73221 4.02866L7.5 6.05672Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
+                        </svg>
+                        <span className="truncate max-w-28">
+                          {models.find((m: Model) => m.name === selectedModel)?.displayName || selectedModel}
+                        </span>
+                        <ChevronDown className="h-3 w-3 opacity-70 flex-shrink-0 ml-1" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                      {models.map((model) => (
+                        <DropdownMenuItem 
+                          key={model.name}
+                          className={`flex items-center justify-between ${model.name === selectedModel ? 'bg-primary/5' : ''}`}
+                          onSelect={() => setSelectedModel(model.name)}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{model.displayName}</span>
+                            {model.name === selectedModel && (
+                              <Check className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground truncate max-w-32">{model.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </h2>
             </div>
@@ -1187,8 +1370,7 @@ function App() {
                               </div>
                             ) : (
                               <div 
-                                className="cursor-pointer hover:bg-opacity-90 transition-colors"
-                                onClick={() => startEditingMessage(index)}
+                                className="hover:bg-opacity-90 transition-colors"
                               >
                                 {message.content}
                               </div>
