@@ -822,8 +822,15 @@ async function fetchData() {
         <div className="max-w-5xl mx-auto px-6 sm:px-8">
           <div className="flex items-center justify-center h-14">
             <div className="flex-shrink-0">
-              <a href="/" className="text-lg font-semibold tracking-tight text-foreground">
-                Few-Shot Chatbot
+              <a href="/" className="text-xl font-semibold tracking-tight text-foreground flex items-center">
+                <div className="mr-2 rounded-full bg-primary/10 p-1">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 2H15C20 2 22 4 22 9V15C22 20 20 22 15 22H9C4 22 2 20 2 15V9C2 4 4 2 9 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M8.5 12H15.5" stroke="currentColor" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M12 15.5V8.5" stroke="currentColor" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Few-Shot Chatbot</span>
               </a>
             </div>
           </div>
@@ -836,25 +843,27 @@ async function fetchData() {
           {/* Examples Section */}
           <section className="mb-8" id="examples">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold tracking-tight">Examples</h2>
+              <h2 className="text-xl font-semibold tracking-tight">
+                <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Examples</span>
+              </h2>
               
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium bg-primary/10 text-primary-foreground/90 border-primary-foreground/20 hover:bg-primary/20 transition-colors">
                     <PlusCircle className="h-3.5 w-3.5" />
                     Add Example
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40 rounded-xl shadow-lg">
+                <DropdownMenuContent align="end" className="w-40 rounded-xl shadow-lg p-1 border-border/30">
                   <DropdownMenuItem 
                     onClick={() => addNewExample('input-output')}
-                    className="cursor-pointer rounded-lg"
+                    className="cursor-pointer rounded-lg py-2 transition-colors"
                   >
                     Input-Output
                   </DropdownMenuItem>
                   <DropdownMenuItem 
                     onClick={() => addNewExample('name-content')}
-                    className="cursor-pointer rounded-lg"
+                    className="cursor-pointer rounded-lg py-2 transition-colors"
                   >
                     Name-Content
                   </DropdownMenuItem>
@@ -867,17 +876,17 @@ async function fetchData() {
               {examples.map((example, index) => {
                 const labels = exampleTypeLabels[example.type];
                 return (
-                  <div key={index} className="border rounded-2xl p-5 bg-card text-card-foreground shadow-sm">
+                  <div key={index} className="border rounded-2xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all duration-200">
                     <div className="flex justify-between mb-3">
                       <div className="font-medium text-sm text-muted-foreground flex items-center">
-                        <span>Example {index + 1}</span>
+                        <span className="bg-primary/10 text-primary-foreground/90 py-0.5 px-2.5 rounded-full text-xs">Example {index + 1}</span>
                         <div className="ml-2">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                className="h-7 flex items-center gap-1 px-2.5 text-xs font-normal rounded-full"
+                                className="h-7 flex items-center gap-1 px-2.5 text-xs font-normal rounded-full bg-muted/50 hover:bg-muted/80 transition-colors"
                               >
                                 {example.type === 'input-output' ? 'Input-Output' : 'Name-Content'}
                                 <ChevronDown className="h-3 w-3" />
@@ -903,17 +912,20 @@ async function fetchData() {
                       <Button 
                         variant="ghost" 
                         size="sm" 
-                        className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground rounded-full" 
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors" 
                         onClick={() => removeExample(index)}
                       >
                         <X className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                     <div className="text-sm">
-                      <div className="mb-3">
-                        <span className="font-medium">{labels.first}:</span>{" "}
+                      <div className="mb-4">
+                        <div className="flex items-baseline mb-1">
+                          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.first}</span>
+                          <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
+                        </div>
                         {editingIndex === index && editingField === 'firstField' ? (
-                          <div className="flex items-start mt-2">
+                          <div className="flex items-start mt-1.5">
                             <Textarea 
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
@@ -932,7 +944,7 @@ async function fetchData() {
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full" 
+                                className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
                                 onClick={saveEdit}
                               >
                                 <Check className="h-3.5 w-3.5" />
@@ -940,7 +952,7 @@ async function fetchData() {
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                className="h-7 w-7 p-0 text-muted-foreground rounded-full" 
+                                className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
                                 onClick={cancelEdit}
                               >
                                 <X className="h-3.5 w-3.5" />
@@ -948,18 +960,23 @@ async function fetchData() {
                             </div>
                           </div>
                         ) : (
-                          <span 
-                            className="cursor-pointer hover:bg-accent hover:text-accent-foreground px-2 py-0.5 rounded-md max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                          <div 
+                            className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent transition-all duration-150"
                             onClick={() => startEditing(index, 'firstField')}
                           >
-                            {example.firstField || "Click to add content..."}
-                          </span>
+                            {example.firstField || 
+                              <span className="italic text-muted-foreground/70">Click to add content...</span>
+                            }
+                          </div>
                         )}
                       </div>
-                      <div>
-                        <span className="font-medium">{labels.second}:</span>{" "}
+                      <div className="mb-1">
+                        <div className="flex items-baseline mb-1">
+                          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.second}</span>
+                          <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
+                        </div>
                         {editingIndex === index && editingField === 'secondField' ? (
-                          <div className="flex items-start mt-2">
+                          <div className="flex items-start mt-1.5">
                             <Textarea 
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
@@ -978,7 +995,7 @@ async function fetchData() {
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full" 
+                                className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
                                 onClick={saveEdit}
                               >
                                 <Check className="h-3.5 w-3.5" />
@@ -986,7 +1003,7 @@ async function fetchData() {
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                className="h-7 w-7 p-0 text-muted-foreground rounded-full" 
+                                className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
                                 onClick={cancelEdit}
                               >
                                 <X className="h-3.5 w-3.5" />
@@ -994,12 +1011,14 @@ async function fetchData() {
                             </div>
                           </div>
                         ) : (
-                          <span 
-                            className="cursor-pointer hover:bg-accent hover:text-accent-foreground px-2 py-0.5 rounded-md max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                          <div 
+                            className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent transition-all duration-150"
                             onClick={() => startEditing(index, 'secondField')}
                           >
-                            {example.secondField || "Click to add content..."}
-                          </span>
+                            {example.secondField || 
+                              <span className="italic text-muted-foreground/70">Click to add content...</span>
+                            }
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1012,12 +1031,14 @@ async function fetchData() {
           {/* Templates Section */}
           <section className="mb-8" id="templates">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold tracking-tight">Templates</h2>
+              <h2 className="text-xl font-semibold tracking-tight">
+                <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Templates</span>
+              </h2>
               
               <Button
                 variant="outline"
                 size="sm"
-                className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium"
+                className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium bg-primary/10 text-primary-foreground/90 border-primary-foreground/20 hover:bg-primary/20 transition-colors"
                 onClick={addTemplate}
               >
                 <PlusCircle className="h-3.5 w-3.5" />
@@ -1028,13 +1049,13 @@ async function fetchData() {
             {/* Template list */}
             <div className="space-y-4 mb-6">
               {templates.map((template, index) => (
-                <div key={template.id} className="border rounded-lg p-5 bg-card text-card-foreground shadow-sm relative">
+                <div key={template.id} className="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all duration-200 relative">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-sm text-muted-foreground font-medium">Template</h3>
+                    <h3 className="text-xs font-medium bg-muted/50 py-0.5 px-2.5 rounded-full text-muted-foreground">Template</h3>
                     <Button 
                       variant="ghost"
                       size="sm" 
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground rounded-full" 
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors" 
                       onClick={() => removeTemplate(index)}
                       title="Delete template"
                     >
@@ -1043,7 +1064,7 @@ async function fetchData() {
                   </div>
                   
                   <div 
-                    className="overflow-y-auto mb-4 rounded-lg p-3 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                    className="overflow-y-auto mb-4 rounded-lg border border-border/30 p-3 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent bg-card/50"
                     style={{ 
                       maxHeight: templateHeights[template.id] || 300,
                       height: templateHeights[template.id] ? `${templateHeights[template.id]}px` : 'auto'
@@ -1090,36 +1111,40 @@ async function fetchData() {
                                 </Button>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-1 group">
+                              <div className="flex items-baseline gap-1 group mb-1.5">
                                 <span 
-                                  className="font-medium cursor-pointer"
+                                  className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80 cursor-pointer flex items-center gap-1"
                                   onClick={() => startEditingDescription(index, idx)}
                                   title="Click to edit description"
                                 >
-                                  {input.description || "Click to add description"}:
-                                </span>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
-                                  onClick={() => startEditingDescription(index, idx)}
-                                >
-                                  <svg 
-                                    width="12" 
-                                    height="12" 
-                                    viewBox="0 0 15 15" 
-                                    fill="none" 
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="text-muted-foreground"
+                                  {input.description || "Click to add description"}
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      startEditingDescription(index, idx);
+                                    }}
                                   >
-                                    <path 
-                                      d="M11.8536 1.14645C11.6583 0.951184 11.3417 0.951184 11.1465 1.14645L3.71455 8.57836C3.62459 8.66832 3.55263 8.77461 3.50251 8.89155L2.04044 12.303C1.9599 12.491 2.00189 12.709 2.14646 12.8536C2.29103 12.9981 2.50905 13.0401 2.69697 12.9596L6.10847 11.4975C6.2254 11.4474 6.3317 11.3754 6.42166 11.2855L13.8536 3.85355C14.0488 3.65829 14.0488 3.34171 13.8536 3.14645L11.8536 1.14645ZM4.42166 9.28547L11.5 2.20711L12.7929 3.5L5.71455 10.5784L4.21924 11.2192L3.78081 10.7808L4.42166 9.28547Z" 
-                                      fill="currentColor" 
-                                      fillRule="evenodd" 
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                </Button>
+                                    <svg 
+                                      width="10" 
+                                      height="10" 
+                                      viewBox="0 0 15 15" 
+                                      fill="none" 
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      className="text-muted-foreground"
+                                    >
+                                      <path 
+                                        d="M11.8536 1.14645C11.6583 0.951184 11.3417 0.951184 11.1465 1.14645L3.71455 8.57836C3.62459 8.66832 3.55263 8.77461 3.50251 8.89155L2.04044 12.303C1.9599 12.491 2.00189 12.709 2.14646 12.8536C2.29103 12.9981 2.50905 13.0401 2.69697 12.9596L6.10847 11.4975C6.2254 11.4474 6.3317 11.3754 6.42166 11.2855L13.8536 3.85355C14.0488 3.65829 14.0488 3.34171 13.8536 3.14645L11.8536 1.14645ZM4.42166 9.28547L11.5 2.20711L12.7929 3.5L5.71455 10.5784L4.21924 11.2192L3.78081 10.7808L4.42166 9.28547Z" 
+                                        fill="currentColor" 
+                                        fillRule="evenodd" 
+                                        clipRule="evenodd"
+                                      />
+                                    </svg>
+                                  </Button>
+                                </span>
+                                <div className="flex-grow ml-1 border-t border-dashed border-border/30"></div>
                               </div>
                             )}
                           </div>
@@ -1130,7 +1155,7 @@ async function fetchData() {
                               updatedTemplates[index].inputs[idx].content = e.target.value;
                               setTemplates(updatedTemplates);
                             }}
-                            className="w-full p-2 text-sm border rounded-md bg-background resize-none min-h-[80px] max-h-[500px] overflow-y-auto"
+                            className="w-full p-3 text-sm border rounded-lg bg-background/60 hover:bg-background resize-none min-h-[80px] max-h-[500px] overflow-y-auto focus:outline-none focus:ring-1 focus:ring-border transition-colors duration-200"
                             placeholder="Enter your input here..."
                           />
                           
@@ -1159,7 +1184,7 @@ async function fetchData() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 opacity-70 hover:opacity-100 transition-opacity"
+                        className="h-8 text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-all rounded-full px-4 hover:bg-muted/80"
                         onClick={() => addInputToExistingTemplate(index)}
                         title="Add another input field"
                       >
@@ -1177,11 +1202,11 @@ async function fetchData() {
                   
                   {/* Resize handle */}
                   <div 
-                    className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize flex justify-center items-center hover:bg-border/30 rounded-b-lg" 
+                    className="absolute bottom-0 left-0 right-0 h-4 cursor-ns-resize flex justify-center items-center hover:bg-muted/30 rounded-b-xl transition-colors duration-200" 
                     onMouseDown={(e) => startResizing(e, template.id, templateHeights[template.id] || 300)}
                     title="Drag to resize"
                   >
-                    <div className="w-16 h-1 bg-border/50 rounded-full" />
+                    <div className="w-10 h-[2px] bg-muted-foreground/30 rounded-full" />
                   </div>
                 </div>
               ))}
@@ -1190,7 +1215,9 @@ async function fetchData() {
           
           {/* Chat messages */}
           <section className="mb-48" id="chat">
-            <h2 className="text-xl font-semibold tracking-tight mb-4">Conversation</h2>
+            <h2 className="text-xl font-semibold tracking-tight mb-4">
+              <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Conversation</span>
+            </h2>
             <div className="space-y-4 mb-16 rounded-2xl border p-5 bg-card/30 backdrop-blur-sm min-h-[300px]">
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-72 text-center">
@@ -1210,9 +1237,9 @@ async function fetchData() {
                     <div 
                       className={`group relative max-w-[80%] rounded-2xl m-2 px-5 py-4 ${
                         message.role === 'user' 
-                          ? 'bg-primary text-primary-foreground' 
-                          : 'bg-secondary text-secondary-foreground'
-                      } shadow-sm`}
+                          ? 'bg-primary text-primary-foreground shadow-sm' 
+                          : 'bg-secondary text-secondary-foreground shadow-sm backdrop-blur-sm'
+                      } transition-all duration-200 hover:shadow-md`}
                     >
                       {/* Action buttons - visible on hover or when editing */}
                       <div className={`absolute -top-6 -right-4 z-10 ${editingMessageIndex === index ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity flex gap-1.5`}>
@@ -1262,7 +1289,7 @@ async function fetchData() {
                           <Textarea 
                             value={editingMessageContent}
                             onChange={(e) => setEditingMessageContent(e.target.value)}
-                            className="flex-1 p-2 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                            className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-1 focus:ring-border scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
@@ -1412,7 +1439,7 @@ async function fetchData() {
         </div>
         
         {/* Input area - Updated with larger size and no focus effects */}
-        <div className="fixed bottom-0 left-0 right-0 backdrop-blur-xl bg-none border-t border-border/30 py-6 pb-16">
+        <div className="fixed bottom-0 left-0 right-0 backdrop-blur-xl bg-background/80 border-t border-border/30 py-6 pb-8 sm:pb-16">
           <div className="max-w-5xl mx-auto px-6 flex gap-3">
             <div className="flex-1 relative">
               <Textarea
@@ -1426,7 +1453,7 @@ async function fetchData() {
                   }
                 }}
                 placeholder="Type your message..."
-                className="w-full resize-none overflow-y-auto bg-background text-foreground rounded-2xl min-h-[60px] max-h-[180px] py-3 px-4 border-border focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+                className="w-full resize-none overflow-y-auto bg-background text-foreground rounded-2xl min-h-[60px] max-h-[180px] py-4 px-4 border-border focus:outline-none focus:border-border focus:ring-1 focus:ring-border/50 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent shadow-sm transition-shadow duration-200 ease-in-out hover:shadow-md"
                 style={{ 
                   height: textareaRef.current?.scrollHeight 
                     ? `${Math.min(textareaRef.current.scrollHeight, 180)}px` 
@@ -1437,14 +1464,14 @@ async function fetchData() {
             <Button 
               onClick={handleSendMessage} 
               disabled={isLoading} 
-              className="rounded-full h-12 w-12 p-0 flex items-center justify-center flex-shrink-0"
+              className="rounded-full h-12 w-12 p-0 flex items-center justify-center flex-shrink-0 shadow-sm hover:shadow transition-all duration-200"
             >
               <SendIcon className="h-5 w-5" />
             </Button>
             <Button 
               variant="outline" 
               onClick={clearChat} 
-              className="rounded-full h-12 px-5 text-sm font-medium flex-shrink-0"
+              className="rounded-full h-12 px-5 text-sm font-medium flex-shrink-0 shadow-sm hover:shadow-none transition-all duration-200"
             >
               Clear
             </Button>
