@@ -532,9 +532,14 @@ function App() {
       }]);
     } catch (error) {
       console.error("Error calling Gemini API:", error);
+      // Extract the error message - show the specific error instead of a generic message
+      const errorMessage = error instanceof Error 
+        ? `Error: ${error.message}` 
+        : "Unknown error occurred";
+      
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: "Sorry, there was an error processing your request.",
+        content: `Failed to get response from Gemini API. ${errorMessage}`,
         id: `error-${Date.now()}`
       }]);
     } finally {
@@ -649,9 +654,14 @@ function App() {
         }]);
       } catch (error) {
         console.error("Error calling Gemini API:", error);
+        // Extract the error message - show the specific error instead of a generic message
+        const errorMessage = error instanceof Error 
+          ? `Error: ${error.message}` 
+          : "Unknown error occurred";
+        
         setMessages(prev => [...prev, { 
           role: 'assistant', 
-          content: "Sorry, there was an error processing your request.",
+          content: `Failed to get response from Gemini API. ${errorMessage}`,
           id: `error-${Date.now()}`
         }]);
       } finally {
@@ -733,9 +743,14 @@ function App() {
       }]);
     } catch (error) {
       console.error("Error calling Gemini API:", error);
+      // Extract the error message - show the specific error instead of a generic message
+      const errorMessage = error instanceof Error 
+        ? `Error: ${error.message}` 
+        : "Unknown error occurred";
+      
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: "Sorry, there was an error processing your request.",
+        content: `Failed to get response from Gemini API. ${errorMessage}`,
         id: `error-${Date.now()}`
       }]);
     } finally {
