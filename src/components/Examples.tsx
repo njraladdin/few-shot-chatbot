@@ -182,15 +182,11 @@ export default function Examples({
   };
 
   return (
-    <section className="mb-8" id="examples">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold tracking-tight">
-          <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Examples</span>
-        </h2>
-        
+    <section className="mb-6" id="examples">
+      <div className="flex justify-between items-center mb-5">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium bg-primary/10 text-primary-foreground/90 border-primary-foreground/20 hover:bg-primary/20 transition-colors">
+            <Button variant="outline" size="sm" className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium bg-primary/10 text-primary-foreground/90 border-primary-foreground/20 hover:bg-primary/20 transition-colors ml-auto">
               <PlusCircle className="h-3.5 w-3.5" />
               Add Example
             </Button>
@@ -213,14 +209,14 @@ export default function Examples({
       </div>
       
       {/* Example list */}
-      <div className="space-y-4 mb-6">
+      <div className="space-y-5 mb-6">
         {examples.map((example, index) => {
           const labels = exampleTypeLabels[example.type];
           return (
-            <div key={index} className="border rounded-2xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all duration-200">
-              <div className="flex justify-between mb-3">
+            <div key={index} className="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all duration-200">
+              <div className="flex justify-between mb-4">
                 <div className="font-medium text-sm text-muted-foreground flex items-center">
-                  <span className="bg-primary/10 text-primary-foreground/90 py-0.5 px-2.5 rounded-full text-xs">Example {index + 1}</span>
+                  <span className="bg-muted/50 text-muted-foreground py-1 px-3 rounded-full text-xs font-semibold">Example {index + 1}</span>
                   <div className="ml-2">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -253,114 +249,117 @@ export default function Examples({
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors" 
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors" 
                   onClick={() => removeExample(index)}
+                  title="Delete example"
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <div className="text-sm">
-                <div className="mb-4">
-                  <div className="flex items-baseline mb-1">
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.first}</span>
-                    <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
-                  </div>
-                  {editingIndex === index && editingField === 'firstField' ? (
-                    <div className="flex items-start mt-1.5">
-                      <Textarea 
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            saveEdit();
-                          } else if (e.key === 'Escape') {
-                            cancelEdit();
-                          }
-                        }}
-                        autoFocus
-                      />
-                      <div className="flex flex-col ml-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
-                          onClick={saveEdit}
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
-                          onClick={cancelEdit}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
+              <div className="border border-border/30 p-3 rounded-lg bg-card/50">
+                <div className="text-sm">
+                  <div className="mb-5">
+                    <div className="flex items-baseline mb-2">
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.first}</span>
+                      <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
+                    </div>
+                    {editingIndex === index && editingField === 'firstField' ? (
+                      <div className="flex items-start mt-1.5">
+                        <Textarea 
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              saveEdit();
+                            } else if (e.key === 'Escape') {
+                              cancelEdit();
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <div className="flex flex-col ml-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
+                            onClick={saveEdit}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
+                            onClick={cancelEdit}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div 
-                      className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent transition-all duration-150"
-                      onClick={() => startEditing(index, 'firstField')}
-                    >
-                      {example.firstField || 
-                        <span className="italic text-muted-foreground/70">Click to add content...</span>
-                      }
-                    </div>
-                  )}
-                </div>
-                <div className="mb-1">
-                  <div className="flex items-baseline mb-1">
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.second}</span>
-                    <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
-                  </div>
-                  {editingIndex === index && editingField === 'secondField' ? (
-                    <div className="flex items-start mt-1.5">
-                      <Textarea 
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            saveEdit();
-                          } else if (e.key === 'Escape') {
-                            cancelEdit();
-                          }
-                        }}
-                        autoFocus
-                      />
-                      <div className="flex flex-col ml-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
-                          onClick={saveEdit}
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
-                          onClick={cancelEdit}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
+                    ) : (
+                      <div 
+                        className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70 transition-all duration-150"
+                        onClick={() => startEditing(index, 'firstField')}
+                      >
+                        {example.firstField || 
+                          <span className="italic text-muted-foreground/70">Click to add content...</span>
+                        }
                       </div>
+                    )}
+                  </div>
+                  <div className="mb-1">
+                    <div className="flex items-baseline mb-2">
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{labels.second}</span>
+                      <div className="flex-grow ml-2 border-t border-dashed border-border/30"></div>
                     </div>
-                  ) : (
-                    <div 
-                      className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent transition-all duration-150"
-                      onClick={() => startEditing(index, 'secondField')}
-                    >
-                      {example.secondField || 
-                        <span className="italic text-muted-foreground/70">Click to add content...</span>
-                      }
-                    </div>
-                  )}
+                    {editingIndex === index && editingField === 'secondField' ? (
+                      <div className="flex items-start mt-1.5">
+                        <Textarea 
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-border focus:ring-0 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              saveEdit();
+                            } else if (e.key === 'Escape') {
+                              cancelEdit();
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <div className="flex flex-col ml-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 w-7 p-0 mb-1.5 text-green-500 rounded-full transition-colors duration-200" 
+                            onClick={saveEdit}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 w-7 p-0 text-muted-foreground rounded-full transition-colors duration-200" 
+                            onClick={cancelEdit}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div 
+                        className="cursor-pointer group hover:bg-accent hover:text-accent-foreground px-3 py-2 rounded-lg border border-transparent hover:border-border/30 max-h-[500px] overflow-y-auto block mt-1 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent hover:scrollbar-thumb-border/70 transition-all duration-150"
+                        onClick={() => startEditing(index, 'secondField')}
+                      >
+                        {example.secondField || 
+                          <span className="italic text-muted-foreground/70">Click to add content...</span>
+                        }
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -75,7 +75,7 @@ interface TemplatesProps {
 
 export default function Templates({ 
   templates, 
-  setTemplates, 
+  setTemplates,
   templateHeights,
   setTemplateHeights 
 }: TemplatesProps) {
@@ -83,19 +83,6 @@ export default function Templates({
   const [editingTemplateIndex, setEditingTemplateIndex] = useState<number | null>(null);
   const [editingInputIndex, setEditingInputIndex] = useState<number | null>(null);
   const [editingDescription, setEditingDescription] = useState("");
-
-  // For template card resizing
-  const resizingRef = useRef<{
-    isResizing: boolean;
-    templateId: string | null;
-    startY: number;
-    startHeight: number;
-  }>({
-    isResizing: false,
-    templateId: null,
-    startY: 0,
-    startHeight: 0
-  });
 
   // Save templates to localStorage whenever they change
   useEffect(() => {
@@ -109,19 +96,6 @@ export default function Templates({
       }
     }
   }, [templates]);
-
-  // Save template heights to localStorage whenever they change
-  useEffect(() => {
-    if (isLocalStorageAvailable() && Object.keys(templateHeights).length > 0) {
-      try {
-        const heightsJSON = JSON.stringify(templateHeights);
-        localStorage.setItem(TEMPLATE_HEIGHTS_STORAGE_KEY, heightsJSON);
-        console.log('Template heights saved to localStorage:', templateHeights);
-      } catch (error) {
-        console.error("Failed to save template heights to localStorage:", error);
-      }
-    }
-  }, [templateHeights]);
 
   // Template management functions
   const addTemplate = () => {
@@ -181,79 +155,13 @@ export default function Templates({
     setEditingDescription("New input");
   };
 
-  // Start resizing
-  const startResizing = (e: React.MouseEvent, templateId: string, currentHeight: number) => {
-    e.preventDefault();
-    resizingRef.current = {
-      isResizing: true,
-      templateId,
-      startY: e.clientY,
-      startHeight: currentHeight
-    };
-    
-    // Add event listeners for mouse move and up
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', stopResizing);
-  };
-  
-  // Handle mouse movement during resize
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!resizingRef.current.isResizing) return;
-    
-    const deltaY = e.clientY - resizingRef.current.startY;
-    const newHeight = Math.max(100, resizingRef.current.startHeight + deltaY);
-    
-    setTemplateHeights(prev => ({
-      ...prev,
-      [resizingRef.current.templateId!]: newHeight
-    }));
-  };
-  
-  // Stop resizing
-  const stopResizing = () => {
-    if (resizingRef.current.isResizing && resizingRef.current.templateId) {
-      
-      // Explicitly save to localStorage
-      if (isLocalStorageAvailable()) {
-        try {
-          const updatedHeights = {
-            ...templateHeights
-          };
-          const heightsJSON = JSON.stringify(updatedHeights);
-          localStorage.setItem(TEMPLATE_HEIGHTS_STORAGE_KEY, heightsJSON);
-          console.log('Template heights saved after resize:', updatedHeights);
-        } catch (error) {
-          console.error("Failed to save template heights after resize:", error);
-        }
-      }
-    }
-    
-    // Reset resizing state
-    resizingRef.current.isResizing = false;
-    resizingRef.current.templateId = null;
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', stopResizing);
-  };
-  
-  // Cleanup resize listeners on unmount
-  useEffect(() => {
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', stopResizing);
-    };
-  }, []);
-
   return (
-    <section className="mb-8" id="templates">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold tracking-tight">
-          <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Templates</span>
-        </h2>
-        
+    <section className="mb-6" id="templates">
+      <div className="flex justify-between items-center mb-5">
         <Button
           variant="outline"
           size="sm"
-          className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium bg-primary/10 text-primary-foreground/90 border-primary-foreground/20 hover:bg-primary/20 transition-colors"
+          className="flex items-center gap-1.5 rounded-full h-8 px-4 text-sm font-medium bg-primary/10 text-primary-foreground/90 border-primary-foreground/20 hover:bg-primary/20 transition-colors ml-auto"
           onClick={addTemplate}
         >
           <PlusCircle className="h-3.5 w-3.5" />
@@ -262,11 +170,11 @@ export default function Templates({
       </div>
       
       {/* Template list */}
-      <div className="space-y-4 mb-6">
+      <div className="space-y-5 mb-6">
         {templates.map((template, index) => (
           <div key={template.id} className="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all duration-200 relative">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xs font-medium bg-muted/50 py-0.5 px-2.5 rounded-full text-muted-foreground">Template</h3>
+              <h3 className="text-xs font-semibold bg-muted/50 py-1 px-3 rounded-full text-muted-foreground">Template {index + 1}</h3>
               <Button 
                 variant="ghost"
                 size="sm" 
@@ -278,17 +186,11 @@ export default function Templates({
               </Button>
             </div>
             
-            <div 
-              className="overflow-y-auto mb-4 rounded-lg border border-border/30 p-3 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent bg-card/50"
-              style={{ 
-                maxHeight: templateHeights[template.id] || 300,
-                height: templateHeights[template.id] ? `${templateHeights[template.id]}px` : 'auto'
-              }}
-            >
+            <div className="overflow-y-auto mb-4 rounded-lg border border-border/30 p-3 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent bg-card/50 max-h-[300px]">
               {template.inputs.map((input, idx) => (
-                <div key={idx} className="mb-4 text-sm">
+                <div key={idx} className="mb-5 text-sm last:mb-1">
                   <div className="p-3 group/input relative">
-                    <div className="mb-2">
+                    <div className="mb-3">
                       {editingTemplateIndex === index && editingInputIndex === idx ? (
                         <div className="flex items-center gap-2">
                           <Input
@@ -326,7 +228,7 @@ export default function Templates({
                           </Button>
                         </div>
                       ) : (
-                        <div className="flex items-baseline gap-1 group mb-1.5">
+                        <div className="flex items-baseline gap-1 group mb-2">
                           <span 
                             className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80 cursor-pointer flex items-center gap-1"
                             onClick={() => startEditingDescription(index, idx)}
@@ -370,7 +272,7 @@ export default function Templates({
                         updatedTemplates[index].inputs[idx].content = e.target.value;
                         setTemplates(updatedTemplates);
                       }}
-                      className="w-full p-3 text-sm border rounded-lg bg-background/60 hover:bg-background resize-none min-h-[80px] max-h-[500px] overflow-y-auto focus:outline-none focus:ring-1 focus:ring-border transition-colors duration-200"
+                      className="w-full p-3 text-sm border rounded-lg bg-background/60 hover:bg-background resize-none min-h-[80px] max-h-[500px] overflow-y-auto focus:outline-none focus:ring-1 focus:ring-border transition-colors duration-200 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent"
                       placeholder="Enter template default value (will be pre-filled when used)..."
                     />
                     
@@ -395,7 +297,7 @@ export default function Templates({
               ))}
               
               {/* Subtle add input button */}
-              <div className="flex justify-center">
+              <div className="flex justify-center mt-2">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -409,19 +311,10 @@ export default function Templates({
               </div>
             </div>
 
-            <div className="mb-2 text-xs flex justify-between items-center">
+            <div className="text-xs flex justify-between items-center">
               <span className="text-muted-foreground">
                 {template.inputs.length} Input {template.inputs.length === 1 ? 'Field' : 'Fields'}
               </span>
-            </div>
-            
-            {/* Resize handle */}
-            <div 
-              className="absolute bottom-0 left-0 right-0 h-4 cursor-ns-resize flex justify-center items-center hover:bg-muted/30 rounded-b-xl transition-colors duration-200" 
-              onMouseDown={(e) => startResizing(e, template.id, templateHeights[template.id] || 300)}
-              title="Drag to resize"
-            >
-              <div className="w-10 h-[2px] bg-muted-foreground/30 rounded-full" />
             </div>
           </div>
         ))}

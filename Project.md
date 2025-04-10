@@ -20,3 +20,11 @@ Uses Gemini API with few-shot prompting technique to create consistent outputs b
 TODO: 
 - show token count, done 
 - option to run tempaltes directly in conversaiton witohut having to send a mesage 
+
+
+- problem :
+page is not clear. what's the main section to use? 
+conversation 
+but at hte same time i want ot see current examples and tempaltes 
+
+remove inputting templtates and examepls in conversation. use the ones in the exampels and templates section autoamtically

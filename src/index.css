@@ -43,10 +43,10 @@
 
 :root {
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  
+
   /* Apple-inspired style with rounded corners */
   --radius: 1rem;
-  
+
   /* Light theme - Refined Apple-inspired colors */
   --background: #fafafa;
   --foreground: #1d1d1f;
@@ -66,14 +66,14 @@
   --border: rgba(0, 0, 0, 0.1);
   --input: rgba(0, 0, 0, 0.1);
   --ring: #0071e3;
-  
+
   /* Chart colors */
   --chart-1: #0071e3;
   --chart-2: #5ac8fa;
   --chart-3: #34c759;
   --chart-4: #ff9500;
   --chart-5: #ff3b30;
-  
+
   /* Sidebar colors */
   --sidebar: #ffffff;
   --sidebar-foreground: #1d1d1f;
@@ -105,14 +105,14 @@
   --border: rgba(255, 255, 255, 0.15);
   --input: rgba(255, 255, 255, 0.15);
   --ring: #0a84ff;
-  
+
   /* Chart colors - dark mode */
   --chart-1: #0a84ff;
   --chart-2: #64d2ff;
   --chart-3: #30d158;
   --chart-4: #ff9f0a;
   --chart-5: #ff453a;
-  
+
   /* Sidebar colors - dark mode */
   --sidebar: #1c1c1e;
   --sidebar-foreground: #f5f5f7;
@@ -135,114 +135,114 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  
+
   /* Apple-like typography */
   h1 {
     font-weight: 600;
     letter-spacing: -0.025em;
     line-height: 1.1;
   }
-  
+
   h2, h3, h4, h5, h6 {
     font-weight: 500;
     letter-spacing: -0.0125em;
     line-height: 1.2;
   }
-  
+
   p, button, input, textarea {
     font-weight: 400;
     letter-spacing: -0.011em;
     line-height: 1.5;
   }
-  
+
   /* Improved Apple-like transition */
   button, a {
     transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
   }
-  
+
   /* Apple-specific styling */
   .rounded-2xl {
     border-radius: 1rem;
   }
-  
+
   .rounded-full {
     border-radius: 9999px;
   }
-  
+
   /* Apple card styling */
   .bg-card, .bg-popover {
     box-shadow: 0 2px 14px rgba(0, 0, 0, 0.05);
   }
-  
+
   .dark .bg-card, .dark .bg-popover {
     box-shadow: 0 2px 14px rgba(0, 0, 0, 0.15);
   }
-  
+
   /* Apple button styling */
   button[class*="bg-primary"] {
     background: linear-gradient(to bottom, #0077ed, #006edb);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     transform: translateY(0);
   }
-  
+
   button[class*="bg-primary"]:hover {
     background: linear-gradient(to bottom, #0081fc, #0077ed);
     transform: translateY(-1px);
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
   }
-  
+
   button[class*="bg-primary"]:active {
     background: linear-gradient(to bottom, #006edb, #0061bf);
     transform: translateY(0);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   }
-  
+
   .dark button[class*="bg-primary"] {
     background: linear-gradient(to bottom, #0a84ff, #007aff);
   }
-  
+
   .dark button[class*="bg-primary"]:hover {
     background: linear-gradient(to bottom, #1c8eff, #0a84ff);
   }
-  
+
   .dark button[class*="bg-primary"]:active {
     background: linear-gradient(to bottom, #0071e6, #0065cc);
   }
-  
+
   /* Remove Apple-like input focus - we don't want any focus glow */
   input:focus, textarea:focus {
     box-shadow: none !important;
     outline: none !important;
     border-color: var(--border) !important;
   }
-  
+
   /* Override any shadcn focus styles */
   .focus-visible:ring-1, .focus-visible\:ring-1 {
     --tw-ring-offset-width: 0px !important;
     --tw-ring-width: 0px !important;
   }
-  
+
   /* Backdrop blur */
   .backdrop-blur-xl {
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
   }
-  
+
   /* Apple-like animations */
   @keyframes apple-fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
   }
-  
+
   @keyframes apple-slide-up {
     from { transform: translateY(10px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
   }
-  
+
   .animate-fade-in {
     animation: apple-fade-in 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
   }
-  
+
   .animate-slide-up {
     animation: apple-slide-up 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   }
@@ -253,30 +253,30 @@
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 3px;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: var(--muted-foreground);
   }
-  
+
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
   }
-  
+
   .scrollbar-thumb-border::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 3px;
   }
-  
+
   .scrollbar-track-transparent::-webkit-scrollbar-track {
     background: transparent;
   }
