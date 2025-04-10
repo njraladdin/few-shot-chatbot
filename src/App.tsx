@@ -562,7 +562,7 @@ function App() {
       <div className="flex flex-grow overflow-hidden">
         {/* Sidebar with side-by-side Examples and Templates sections */}
         <div className={`flex-shrink-0 border-r border-border/30 transition-all duration-300 ${
-          isSidebarOpen ? 'w-[40%] max-w-[800px]' : 'w-0 overflow-hidden'
+          isSidebarOpen ? 'w-[40%] max-w-[800px] ' : 'w-0 overflow-hidden'
         }`}>
           {/* Vertical split layout for Examples and Templates */}
           <div className="flex h-full bg-background/50">
@@ -721,11 +721,11 @@ function App() {
                             <Button 
                               variant="secondary" 
                               size="sm" 
-                              className="h-9 w-9 p-0 bg-zinc-800/90 text-zinc-200 backdrop-blur-sm border border-zinc-700/50 shadow-sm rounded-full hover:bg-zinc-700/90 transition-colors" 
+                              className="h-8 w-8 p-0 bg-zinc-800/90 text-zinc-200 backdrop-blur-sm border border-zinc-700/50 shadow-sm rounded-full hover:bg-zinc-700/90 transition-colors" 
                               onClick={saveMessageEdit}
                               title="Save changes"
                             >
-                              <Check className="h-4 w-4" />
+                              <Check className="h-3.5 w-3.5" />
                             </Button>
                           ) : (
                             <>
@@ -757,6 +757,159 @@ function App() {
                             </>
                           )}
                         </div>
+                        
+                        {editingMessageIndex === index ? (
+                          <div className="flex items-start">
+                            <Textarea 
+                              value={editingMessageContent}
+                              onChange={(e) => setEditingMessageContent(e.target.value)}
+                              className="flex-1 p-3 border rounded-xl text-sm bg-background text-foreground focus:outline-none focus:border-primary/30 focus:ring-1 focus:ring-primary/20 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  saveMessageEdit();
+                                } else if (e.key === 'Escape') {
+                                  cancelMessageEdit();
+                                }
+                              }}
+                              autoFocus
+                            />
+                          </div>
+                        ) : (
+                          <div className=" overflow-hidden break-words">
+                            {/* Show example indicator for messages that used examples */}
+                            {message.activeExampleIds && message.activeExampleIds.length > 0 && (
+                              <div 
+                                className="mb-2 text-xs text-muted-foreground flex items-center gap-1"
+                                title="This message was created with specific examples"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M7.5 2C4.4624 2 2 4.4624 2 7.5C2 10.5376 4.4624 13 7.5 13C10.5376 13 13 10.5376 13 7.5C13 4.4624 10.5376 2 7.5 2ZM1 7.5C1 3.91015 3.91015 1 7.5 1C11.0899 1 14 3.91015 14 7.5C14 11.0899 11.0899 14 7.5 14C3.91015 14 1 11.0899 1 7.5ZM7 4.5C7 4.22386 7.22386 4 7.5 4C7.77614 4 8 4.22386 8 4.5V8.5C8 8.77614 7.77614 9 7.5 9C7.22386 9 7 8.77614 7 8.5V4.5ZM7 10.5C7 10.2239 7.22386 10 7.5 10C7.77614 10 8 10.2239 8 10.5C8 10.7761 7.77614 11 7.5 11C7.22386 11 7 10.7761 7 10.5Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+                                </svg>
+                                <span>Examples included in conversation</span>
+                              </div>
+                            )}
+                            
+                            {message.role === 'assistant' ? (
+                              <div className="markdown-wrapper p-0">
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  rehypePlugins={[rehypeSanitize, rehypeHighlight]}
+                                  components={{
+                                    pre: ({ children, ...props }) => {
+                                      const [copied, setCopied] = useState(false);
+                                      const codeRef = useRef<HTMLPreElement>(null);
+                                      
+                                      const handleCopy = () => {
+                                        const code = codeRef.current?.textContent || '';
+                                        copy(code);
+                                        setCopied(true);
+                                        setTimeout(() => setCopied(false), 2000);
+                                      };
+                                      
+                                      return (
+                                        <div className="relative group">
+                                          <pre 
+                                            ref={codeRef} 
+                                            className="markdown-code-block overflow-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-zinc-900/20" 
+                                            style={{ 
+                                              borderRadius: '0.75rem', 
+                                              padding: '0.5rem',
+                                              paddingRight: '2rem' 
+                                            }} 
+                                            {...props}
+                                          >
+                                            {children}
+                                          </pre>
+                                          <button
+                                            onClick={handleCopy}
+                                            className="code-copy-button absolute top-2 right-2 p-1.5 rounded-md transition-opacity duration-200 hover:bg-secondary text-muted-foreground hover:text-foreground"
+                                            title="Copy code"
+                                            aria-label="Copy code to clipboard"
+                                          >
+                                            {copied ? (
+                                              <CheckCheck size={16} className="text-green-500 check-icon" />
+                                            ) : (
+                                              <Copy size={16} />
+                                            )}
+                                          </button>
+                                        </div>
+                                      );
+                                    },
+                                    code: ({ className, children, ...props }) => {
+                                      const match = /language-(\w+)/.exec(className || '');
+                                      return match ? (
+                                        <code 
+                                          className={`${className || ''}`} 
+                                          {...props}
+                                        >
+                                          {children}
+                                        </code>
+                                      ) : (
+                                        <code 
+                                          className="bg-background/50 px-1 py-0.5 rounded-sm text-sm" 
+                                          {...props}
+                                        >
+                                          {children}
+                                        </code>
+                                      );
+                                    },
+                                    p: ({ children, ...props }) => (
+                                      <p className="mb-2 last:mb-0" {...props}>{children}</p>
+                                    ),
+                                    ul: ({ children, ...props }) => (
+                                      <ul className="ml-6 mb-2 list-disc" {...props}>{children}</ul>
+                                    ),
+                                    ol: ({ children, ...props }) => (
+                                      <ol className="ml-6 mb-2 list-decimal" {...props}>{children}</ol>
+                                    ),
+                                    li: ({ children, ...props }) => (
+                                      <li className="mb-1" {...props}>{children}</li>
+                                    ),
+                                    a: ({ children, ...props }) => (
+                                      <a className="text-blue-500 hover:underline" {...props}>{children}</a>
+                                    ),
+                                    h1: ({ children, ...props }) => (
+                                      <h1 className="text-xl font-bold mb-2 mt-4" {...props}>{children}</h1>
+                                    ),
+                                    h2: ({ children, ...props }) => (
+                                      <h2 className="text-lg font-bold mb-2 mt-3" {...props}>{children}</h2>
+                                    ),
+                                    h3: ({ children, ...props }) => (
+                                      <h3 className="text-md font-bold mb-2 mt-3" {...props}>{children}</h3>
+                                    ),
+                                    table: ({ children, ...props }) => (
+                                      <div className="overflow-x-auto my-4">
+                                        <table className="border-collapse border border-border" {...props}>{children}</table>
+                                      </div>
+                                    ),
+                                    th: ({ children, ...props }) => (
+                                      <th className="border border-border bg-secondary px-4 py-2 text-left" {...props}>{children}</th>
+                                    ),
+                                    td: ({ children, ...props }) => (
+                                      <td className="border border-border px-4 py-2" {...props}>{children}</td>
+                                    ),
+                                    blockquote: ({ children, ...props }) => (
+                                      <blockquote className="pl-4 border-l-4 border-border italic my-2" {...props}>{children}</blockquote>
+                                    ),
+                                    hr: ({ ...props }) => (
+                                      <hr className="my-4 border-border" {...props} />
+                                    ),
+                                  }}
+                                >
+                                  {message.content}
+                                </ReactMarkdown>
+                              </div>
+                            ) : (
+                              <div 
+                                className="cursor-pointer hover:bg-opacity-90 transition-colors"
+                                onClick={() => startEditingMessage(index)}
+                              >
+                                {message.content}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
