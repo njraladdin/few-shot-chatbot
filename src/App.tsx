@@ -43,6 +43,144 @@ type TemplateInput = {
   content: string;
 };
 
+// Simple token counter utility (approximation)
+const estimateTokenCount = (text: string): number => {
+  // GPT models use about 4 characters per token on average in English text
+  return Math.ceil(text.length / 4);
+};
+
+// Generate contents array for API request and count tokens
+const generateContentsAndCountTokens = (
+  messages: Message[], 
+  userMessage: Message | null,
+  examples: Example[],
+  templates: Template[],
+  formatTemplateBlocks: (template: Template) => string
+): { contents: any[], tokenCount: number } => {
+  let contents: any[] = [];
+  let totalText = '';
+  
+  // Add examples with clear labeling if there are any
+  if (examples.length > 0) {
+    // System message explaining examples
+    const exampleIntro = "I'm using FEW-SHOT LEARNING to guide your responses. I'll provide some examples of the format I want you to follow. Please analyze these examples carefully to understand the pattern, and then apply the same pattern to your responses to my actual queries.";
+    contents.push({
+      role: 'user' as const,
+      parts: [{ text: exampleIntro }]
+    });
+    totalText += exampleIntro;
+    
+    const exampleResponse = "I understand. I'll use the few-shot learning examples to guide my responses and follow the same patterns you demonstrate.";
+    contents.push({
+      role: 'model' as const,
+      parts: [{ text: exampleResponse }]
+    });
+    totalText += exampleResponse;
+    
+    // Add each example with clear labels
+    examples.forEach((example, idx) => {
+      const labels = exampleTypeLabels[example.type];
+      
+      const exampleFirst = `EXAMPLE ${idx + 1} - ${labels.first.toUpperCase()}:\n${example.firstField}`;
+      contents.push({
+        role: 'user' as const,
+        parts: [{ text: exampleFirst }]
+      });
+      totalText += exampleFirst;
+      
+      const exampleSecond = `EXAMPLE ${idx + 1} - ${labels.second.toUpperCase()}:\n${example.secondField}`;
+      contents.push({
+        role: 'model' as const,
+        parts: [{ text: exampleSecond }]
+      });
+      totalText += exampleSecond;
+    });
+    
+    // Add transition messages
+    const transition1 = "Now that you've seen the few-shot learning examples, please respond to my actual queries following the same patterns demonstrated in the examples.";
+    contents.push({
+      role: 'user' as const,
+      parts: [{ text: transition1 }]
+    });
+    totalText += transition1;
+    
+    const transition2 = "I'll respond to your queries using the patterns demonstrated in the few-shot learning examples.";
+    contents.push({
+      role: 'model' as const,
+      parts: [{ text: transition2 }]
+    });
+    totalText += transition2;
+  }
+  
+  // Add templates with clear labeling if there are any
+  if (templates.length > 0) {
+    // System message explaining templates
+    const templateIntro = "I'm also providing TEMPLATES that you should consider when responding. These templates provide structure or code patterns to use in appropriate contexts.";
+    contents.push({
+      role: 'user' as const,
+      parts: [{ text: templateIntro }]
+    });
+    totalText += templateIntro;
+    
+    const templateResponse = "I understand. I'll consider these templates when forming my responses where appropriate.";
+    contents.push({
+      role: 'model' as const,
+      parts: [{ text: templateResponse }]
+    });
+    totalText += templateResponse;
+    
+    // Add each template with clear labels
+    templates.forEach((template, idx) => {
+      const templateText = `TEMPLATE ${idx + 1} - ${formatTemplateBlocks(template)}`;
+      contents.push({
+        role: 'user' as const,
+        parts: [{ text: templateText }]
+      });
+      totalText += templateText;
+      
+      const templateConfirm = `I'll use TEMPLATE ${idx + 1} when appropriate in my responses.`;
+      contents.push({
+        role: 'model' as const,
+        parts: [{ text: templateConfirm }]
+      });
+      totalText += templateConfirm;
+    });
+    
+    // Add transition message
+    const transition3 = "Now let's proceed with the conversation, using templates and examples as appropriate.";
+    contents.push({
+      role: 'user' as const,
+      parts: [{ text: transition3 }]
+    });
+    totalText += transition3;
+    
+    const transition4 = "I'm ready to have our conversation, keeping these templates and examples in mind.";
+    contents.push({
+      role: 'model' as const,
+      parts: [{ text: transition4 }]
+    });
+    totalText += transition4;
+  }
+  
+  // Add the conversation messages
+  const conversationMessages = userMessage ? [...messages, userMessage] : messages;
+  const conversationContents = conversationMessages.map(msg => {
+    totalText += msg.content;
+    return {
+      role: msg.role === 'assistant' ? 'model' : 'user' as const,
+      parts: [{ text: msg.content }]
+    };
+  });
+  
+  // Combine everything
+  contents = [...contents, ...conversationContents];
+  
+  // Estimate token count
+  const tokenCount = estimateTokenCount(totalText);
+  
+  return { contents, tokenCount };
+};
+
 // Check if localStorage is available
 const isLocalStorageAvailable = () => {
   try {
@@ -71,6 +209,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [tokenCount, setTokenCount] = useState(0);
   
   // Examples for few-shot learning - initialize with data from localStorage if it exists
   const [examples, setExamples] = useState<Example[]>(() => {
@@ -181,6 +320,33 @@ async function fetchData() {
     }
     return {};
   });
+  
+  // Update token count when input or examples/templates change
+  useEffect(() => {
+    if (input.trim()) {
+      const userMessage: Message = { role: 'user', content: input };
+      const { tokenCount } = generateContentsAndCountTokens(
+        messages,
+        userMessage,
+        examples,
+        templates,
+        formatTemplateBlocks
+      );
+      setTokenCount(tokenCount);
+    } else {
+      // Always calculate tokens for the conversation, examples, and templates
+      // Even when input is empty
+      const { tokenCount } = generateContentsAndCountTokens(
+        messages,
+        null,
+        examples,
+        templates,
+        formatTemplateBlocks
+      );
+      setTokenCount(tokenCount);
+    }
+  }, [input, messages, examples, templates]);
+  
   const resizingRef = useRef<{
     isResizing: boolean;
     templateId: string | null;
@@ -210,6 +376,18 @@ async function fetchData() {
   // Enable dark mode by default
   useEffect(() => {
     document.documentElement.classList.add('dark');
+  }, []);
+  
+  // Calculate initial token count on component mount
+  useEffect(() => {
+    const { tokenCount } = generateContentsAndCountTokens(
+      messages,
+      null,
+      examples,
+      templates,
+      formatTemplateBlocks
+    );
+    setTokenCount(tokenCount);
   }, []);
   
   // Load examples from localStorage on component mount - this is now redundant but kept as a backup
@@ -282,94 +460,17 @@ async function fetchData() {
     setIsLoading(true);
     
     try {
-      let contents = [];
+      // Use the utility function to generate contents and count tokens
+      const { contents, tokenCount } = generateContentsAndCountTokens(
+        messages, 
+        userMessage, 
+        examples, 
+        templates, 
+        formatTemplateBlocks
+      );
       
-      // Add examples with clear labeling if there are any
-      if (examples.length > 0) {
-        // Add a system message explaining the examples and few-shot learning
-        contents.push({
-          role: 'user' as const,
-          parts: [{ text: "I'm using FEW-SHOT LEARNING to guide your responses. I'll provide some examples of the format I want you to follow. Please analyze these examples carefully to understand the pattern, and then apply the same pattern to your responses to my actual queries." }]
-        });
-        
-        contents.push({
-          role: 'model' as const,
-          parts: [{ text: "I understand. I'll use the few-shot learning examples to guide my responses and follow the same patterns you demonstrate." }]
-        });
-        
-        // Add each example with clear labels
-        examples.forEach((example, idx) => {
-          const labels = exampleTypeLabels[example.type];
-          
-          contents.push({
-            role: 'user' as const,
-            parts: [{ text: `EXAMPLE ${idx + 1} - ${labels.first.toUpperCase()}:\n${example.firstField}` }]
-          });
-          
-          contents.push({
-            role: 'model' as const,
-            parts: [{ text: `EXAMPLE ${idx + 1} - ${labels.second.toUpperCase()}:\n${example.secondField}` }]
-          });
-        });
-        
-        // Add a transition message
-        contents.push({
-          role: 'user' as const,
-          parts: [{ text: "Now that you've seen the few-shot learning examples, please respond to my actual queries following the same patterns demonstrated in the examples." }]
-        });
-        
-        contents.push({
-          role: 'model' as const,
-          parts: [{ text: "I'll respond to your queries using the patterns demonstrated in the few-shot learning examples." }]
-        });
-      }
-      
-      // Add templates with clear labeling if there are any
-      if (templates.length > 0) {
-        // Add a system message explaining the templates
-        contents.push({
-          role: 'user' as const,
-          parts: [{ text: "I'm also providing TEMPLATES that you should consider when responding. These templates provide structure or code patterns to use in appropriate contexts." }]
-        });
-        
-        contents.push({
-          role: 'model' as const,
-          parts: [{ text: "I understand. I'll consider these templates when forming my responses where appropriate." }]
-        });
-        
-        // Add each template with clear labels
-        templates.forEach((template, idx) => {
-          contents.push({
-            role: 'user' as const,
-            parts: [{ text: `TEMPLATE ${idx + 1} - ${formatTemplateBlocks(template)}` }]
-          });
-          
-          contents.push({
-            role: 'model' as const,
-            parts: [{ text: `I'll use TEMPLATE ${idx + 1} when appropriate in my responses.` }]
-          });
-        });
-        
-        // Add a transition message
-        contents.push({
-          role: 'user' as const,
-          parts: [{ text: "Now let's proceed with the conversation, using templates and examples as appropriate." }]
-        });
-        
-        contents.push({
-          role: 'model' as const,
-          parts: [{ text: "I'm ready to have our conversation, keeping these templates and examples in mind." }]
-        });
-      }
-      
-      // Then add the actual conversation
-      const conversationContents = messages.concat(userMessage).map(msg => ({
-        role: msg.role === 'assistant' ? 'model' : 'user' as const,
-        parts: [{ text: msg.content }]
-      }));
-      
-      // Combine examples with conversation
-      contents = [...contents, ...conversationContents];
+      // Update token count in state
+      setTokenCount(tokenCount);
       
       // Call Gemini API
       const response = await fetch(
@@ -413,6 +514,16 @@ async function fetchData() {
   
   const clearChat = () => {
     setMessages([]);
+    
+    // Recalculate token count after clearing chat
+    const { tokenCount } = generateContentsAndCountTokens(
+      [],
+      null,
+      examples,
+      templates,
+      formatTemplateBlocks
+    );
+    setTokenCount(tokenCount);
   };
   
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -577,94 +688,17 @@ async function fetchData() {
       setIsLoading(true);
       
       try {
-        let contents = [];
+        // Use the utility function to generate contents and count tokens
+        const { contents, tokenCount } = generateContentsAndCountTokens(
+          truncatedMessages,
+          null,
+          examples,
+          templates,
+          formatTemplateBlocks
+        );
         
-        // Add examples with clear labeling if there are any
-        if (examples.length > 0) {
-          // Add a system message explaining the examples and few-shot learning
-          contents.push({
-            role: 'user' as const,
-            parts: [{ text: "I'm using FEW-SHOT LEARNING to guide your responses. I'll provide some examples of the format I want you to follow. Please analyze these examples carefully to understand the pattern, and then apply the same pattern to your responses to my actual queries." }]
-          });
-          
-          contents.push({
-            role: 'model' as const,
-            parts: [{ text: "I understand. I'll use the few-shot learning examples to guide my responses and follow the same patterns you demonstrate." }]
-          });
-          
-          // Add each example with clear labels
-          examples.forEach((example, idx) => {
-            const labels = exampleTypeLabels[example.type];
-            
-            contents.push({
-              role: 'user' as const,
-              parts: [{ text: `EXAMPLE ${idx + 1} - ${labels.first.toUpperCase()}:\n${example.firstField}` }]
-            });
-            
-            contents.push({
-              role: 'model' as const,
-              parts: [{ text: `EXAMPLE ${idx + 1} - ${labels.second.toUpperCase()}:\n${example.secondField}` }]
-            });
-          });
-          
-          // Add a transition message
-          contents.push({
-            role: 'user' as const,
-            parts: [{ text: "Now that you've seen the few-shot learning examples, please respond to my actual queries following the same patterns demonstrated in the examples." }]
-          });
-          
-          contents.push({
-            role: 'model' as const,
-            parts: [{ text: "I'll respond to your queries using the patterns demonstrated in the few-shot learning examples." }]
-          });
-        }
-        
-        // Add templates with clear labeling if there are any
-        if (templates.length > 0) {
-          // Add a system message explaining the templates
-          contents.push({
-            role: 'user' as const,
-            parts: [{ text: "I'm also providing TEMPLATES that you should consider when responding. These templates provide structure or code patterns to use in appropriate contexts." }]
-          });
-          
-          contents.push({
-            role: 'model' as const,
-            parts: [{ text: "I understand. I'll consider these templates when forming my responses where appropriate." }]
-          });
-          
-          // Add each template with clear labels
-          templates.forEach((template, idx) => {
-            contents.push({
-              role: 'user' as const,
-              parts: [{ text: `TEMPLATE ${idx + 1} - ${formatTemplateBlocks(template)}` }]
-            });
-            
-            contents.push({
-              role: 'model' as const,
-              parts: [{ text: `I'll use TEMPLATE ${idx + 1} when appropriate in my responses.` }]
-            });
-          });
-          
-          // Add a transition message
-          contents.push({
-            role: 'user' as const,
-            parts: [{ text: "Now let's proceed with the conversation, using templates and examples as appropriate." }]
-          });
-          
-          contents.push({
-            role: 'model' as const,
-            parts: [{ text: "I'm ready to have our conversation, keeping these templates and examples in mind." }]
-          });
-        }
-        
-        // Then add the conversation up to this point
-        const conversationContents = truncatedMessages.map(msg => ({
-          role: msg.role === 'assistant' ? 'model' : 'user' as const,
-          parts: [{ text: msg.content }]
-        }));
-        
-        // Combine examples with conversation
-        contents = [...contents, ...conversationContents];
+        // Update token count in state
+        setTokenCount(tokenCount);
         
         // Call Gemini API
         const response = await fetch(
@@ -1460,6 +1494,20 @@ async function fetchData() {
                     : '60px' 
                 }}
               />
+              {/* Token count indicator with hover details */}
+              <div 
+                className="absolute bottom-3 right-3 text-xs text-muted-foreground/70 bg-background/80 px-2 py-1 rounded-md shadow-sm backdrop-blur-sm hover:bg-background cursor-pointer group"
+                title="Estimated token count for the entire API request"
+              >
+                ~{tokenCount.toLocaleString()} tokens
+                <div className="hidden group-hover:block absolute bottom-full right-0 mb-2 w-48 bg-background/95 border border-border shadow-lg rounded-lg p-2 text-xs">
+                  <p className="font-medium mb-1">Token Estimate:</p>
+                  <p className="mb-1">• Examples + Templates</p>
+                  <p className="mb-1">• Conversation history</p>
+                  {input.trim() && <p className="mb-1">• Current message</p>}
+                  <p className="mt-2 pt-1 border-t border-border/50 text-[10px] font-medium">Based on ~4 chars per token</p>
+                </div>
+              </div>
             </div>
             <Button 
               onClick={handleSendMessage} 

@@ -17,6 +17,6 @@ Web app for controlling AI responses through examples instead of instructions.
 Uses Gemini API with few-shot prompting technique to create consistent outputs based on demonstrated patterns. 
 
 
-
+TODO: 
 - show token count 
 - option to run tempaltes directly in conversaiton witohut having to send a mesage 
