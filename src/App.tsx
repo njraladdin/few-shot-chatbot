@@ -45,6 +45,13 @@ type Model = {
   description?: string;
 };
 
+// Available models
+export const MODELS: Model[] = [
+  { name: "gemini-2.5-pro-preview-03-25", displayName: "Gemini 2.5 Pro Preview" },
+  { name: "gemini-2.0-flash", displayName: "Gemini 2.0 Flash" },
+  { name: "gemini-2.0-flash-thinking-exp-01-21", displayName: "Gemini 2.0 Flash Thinking" },
+];
+
 // Local storage keys
 export const MESSAGES_STORAGE_KEY = 'few-shot-chatbot-messages';
 export const SELECTED_MODEL_STORAGE_KEY = 'few-shot-chatbot-selected-model';
@@ -58,8 +65,13 @@ const createDefaultTemplate = (): PromptTemplateType => {
     id: `template-default-${Date.now()}`,
     inputs: [
       {
-        id: "input-1",
-        description: "New input",
+        id: `text-${Date.now()}`,
+        type: "text",
+        content: ""
+      },
+      {
+        id: `input-${Date.now() + 1}`,
+        type: "input",
         content: ""
       }
     ]
@@ -81,7 +93,8 @@ const logPerformance = (functionName: string, startTime: number) => {
 // Function to format prompt template for API
 const formatPromptTemplate = (template: PromptTemplateType): string => {
   return template.inputs.map(input => {
-    return `${input.description}:\n${input.content}`;
+    // Just return the content regardless of type
+    return input.content;
   }).join('\n\n');
 };
 
@@ -443,6 +456,9 @@ function App() {
 
   // State for tracking if there are unsaved changes
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // State for copy prompt feedback
+  const [promptCopied, setPromptCopied] = useState(false);
 
   const [messages, setMessages] = useState<Message[]>(() => {
     debugLog('Initializing messages state');
@@ -501,12 +517,7 @@ function App() {
     }
   }, [isConfigDialogOpen, apiKey]);
 
-  // Model selection constant
-  const models: Model[] = [
-    { name: "gemini-2.5-pro-preview-03-25", displayName: "Gemini 2.5 Pro Preview" },
-    { name: "gemini-2.0-flash", displayName: "Gemini 2.0 Flash" },
-    { name: "gemini-2.0-flash-thinking-exp-01-21", displayName: "Gemini 2.0 Flash Thinking" },
-  ];
+
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     if (isLocalStorageAvailable()) {
       try {
@@ -1068,7 +1079,58 @@ function App() {
     }
   }, [handleSendMessage]);
 
-
+  // Function to format and copy entire prompt (examples + template)
+  const copyFormattedPrompt = useCallback(() => {
+    debugLog('copyFormattedPrompt called');
+    
+    // Helper function to clean text by removing consecutive spaces and line breaks
+    const cleanText = (text: string): string => {
+      return text
+        .replace(/\s+/g, ' ')      // Replace multiple whitespace with single space
+        .replace(/\n\s*\n+/g, '\n') // Replace multiple blank lines with one line break
+        .trim();                    // Remove leading/trailing whitespace
+    };
+    
+    let promptText = "";
+    
+    // Add examples if they exist
+    if (examples.length > 0) {
+      promptText += "# Examples\n";
+      // Create more compact examples format
+      examples.forEach((example) => {
+        const labels = exampleTypeLabels[example.type];
+        promptText += `${labels.first}: ${cleanText(example.firstField)}\n`;
+        promptText += `${labels.second}: ${cleanText(example.secondField)}\n`;
+      });
+    }
+    
+    // Add template if it exists
+    if (promptTemplate?.inputs?.length > 0) {
+      if (promptText) promptText += "\n";
+      promptText += "# Prompt Template\n";
+      // Join template inputs with minimal spacing
+      promptText += promptTemplate.inputs
+        .map(input => cleanText(input.content))
+        .filter(content => content) // Remove empty inputs
+        .join("\n");
+    }
+    
+    // Final cleanup to ensure the entire text is optimized
+    promptText = promptText
+      .replace(/\n{3,}/g, '\n\n') // Limit maximum consecutive line breaks to 2
+      .trim();
+    
+    if (promptText) {
+      copy(promptText);
+      setPromptCopied(true);
+      setTimeout(() => setPromptCopied(false), 2000);
+      debugLog('Ultra compact prompt copied to clipboard', { 
+        examplesCount: examples.length, 
+        templateInputsCount: promptTemplate?.inputs?.length || 0,
+        totalLength: promptText.length
+      });
+    }
+  }, [examples, promptTemplate]);
 
   return (
     <div className="flex flex-col h-screen min-h-svh bg-background text-foreground antialiased">
@@ -1298,13 +1360,13 @@ function App() {
                       >
                         <Box className="h-[10px] w-[10px] flex-shrink-0" />
                         <span className="truncate max-w-28">
-                          {models.find((m: Model) => m.name === selectedModel)?.displayName || selectedModel}
+                          {MODELS.find((m: Model) => m.name === selectedModel)?.displayName || selectedModel}
                         </span>
                         <ChevronDown className="h-3 w-3 opacity-70 flex-shrink-0 ml-1" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-64">
-                      {models.map((model) => (
+                      {MODELS.map((model) => (
                         <DropdownMenuItem
                           key={model.name}
                           className={`flex items-center justify-between ${model.name === selectedModel ? 'bg-primary/5' : ''}`}
@@ -1341,11 +1403,31 @@ function App() {
                     {/* Section Title */}
                     <div className="flex justify-between items-center mb-3">
                       <h3 className="text-sm font-medium flex items-center gap-2">
-
                         <span className="text-muted-foreground">
                           Sending to the AI:
                         </span>
                       </h3>
+                      
+                      {/* Copy All Button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={copyFormattedPrompt}
+                        className="text-xs flex items-center gap-1.5 h-7 px-3 bg-background/70 hover:bg-background border-border/20"
+                        title="Copy formatted examples and template for use in other chatbots"
+                      >
+                        {promptCopied ? (
+                          <>
+                            <CheckCheck className="h-3 w-3" />
+                            <span>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3 w-3" />
+                            <span>Copy All</span>
+                          </>
+                        )}
+                      </Button>
                     </div>
 
                     {/* Examples Display */}
@@ -1353,7 +1435,7 @@ function App() {
                       <div className="mb-3">
                         <div className="flex items-center mb-2">
                           <span className="text-xs font-semibold bg-primary/10 text-primary px-2 py-1 rounded-md">
-                            {examples.length} Example{examples.length !== 1 ? 's' : ''}
+                            Examples
                           </span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
@@ -1390,27 +1472,21 @@ function App() {
                       <div>
                         <div className="flex items-center mb-2">
                           <span className="text-xs font-semibold bg-primary/10 text-primary px-2 py-1 rounded-md">
-                            Prompt Template ({promptTemplate.inputs.length} input{promptTemplate.inputs.length !== 1 ? 's' : ''})
+                            Prompt Template
                           </span>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                          {promptTemplate.inputs.map((input, inputIdx) => (
-                            <div
-                              key={input.id}
-                              className="bg-primary/5 border border-primary/10 rounded-lg p-2 text-xs flex flex-col"
-                            >
-                              <div className="font-medium text-primary/80 mb-1">Input {inputIdx + 1}</div>
-                              <div className="space-y-1">
-                                {/* Truncate long content */}
-                                <div className="text-muted-foreground text-[10px] line-clamp-1 py-0.5">
-                                  <span className="font-medium inline-block min-w-[40%] max-w-[60%] truncate">
-                                    {input.description}:
-                                  </span>
-                                  <span className="opacity-80">
-                                    {input.content.length > 30 ? `${input.content.substring(0, 30)}...` : input.content}
-                                  </span>
-                                </div>
-                              </div>
+                        <div className="bg-primary/5 border border-primary/10 rounded-lg p-2 text-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-primary/80">Template</span>
+                          </div>
+                          {promptTemplate.inputs.map((input, idx) => (
+                            <div key={input.id} className="text-muted-foreground mb-1.5 last:mb-0 text-[10px] line-clamp-1">
+                              <span className="font-medium">
+                                {input.type === 'input' ? 'Variable' : 'Text'} {idx + 1}:
+                              </span>{' '}
+                              {input.content.length > 40
+                                ? `${input.content.substring(0, 40)}...`
+                                : input.content || `<empty ${input.type}>`}
                             </div>
                           ))}
                         </div>
