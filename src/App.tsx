@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -12,7 +12,7 @@ import {
   DialogTrigger 
 } from "@/components/ui/dialog"
 
-import { SendIcon, RefreshCw, Check, ChevronDown, Copy, CheckCheck, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react"
+import { SendIcon, RefreshCw, Check, ChevronDown, Copy, CheckCheck, PanelLeftClose, PanelLeftOpen, Settings, ChevronLeft, ChevronRight, PlusSquare, Trash2, Edit, Play, InfoIcon, Box } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +25,7 @@ import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import 'highlight.js/styles/github-dark.css'
 import copy from 'copy-to-clipboard'
-import Templates, { Template, TEMPLATES_STORAGE_KEY, createDefaultTemplate, formatTemplateBlocks } from "@/components/Templates"
+import PromptTemplateEditor, { PromptTemplate, PROMPT_TEMPLATE_STORAGE_KEY, createDefaultTemplate } from "@/components/PromptTemplate"
 import Examples, { Example,  EXAMPLES_STORAGE_KEY, exampleTypeLabels } from "@/components/Examples"
 
 // Define types for messages, examples and API
@@ -55,87 +55,100 @@ export const SELECTED_MODEL_STORAGE_KEY = 'few-shot-chatbot-selected-model';
 // Local storage key for API key
 export const API_KEY_STORAGE_KEY = 'few-shot-chatbot-api-key';
 
-// Simple token counter utility (approximation)
-const estimateTokenCount = (text: string): number => {
-  // GPT models use about 4 characters per token on average in English text
-  return Math.ceil(text.length / 4);
+// Function to format prompt template for API - moved here from PromptTemplate.tsx
+const formatPromptTemplate = (template: PromptTemplate): string => {
+  return template.inputs.map(input => {
+    return `${input.description}:\n${input.content}`;
+  }).join('\n\n');
 };
 
-// Generate contents array for API request and count tokens
-const generateContentsAndCountTokens = (
-  messages: Message[], 
-  userMessage: Message | null,
+// Add a new memoized formatter near the existing token estimation functions
+// This will only recalculate when examples or templates actually change
+const useExamplesAndTemplateFormatter = (
   examples: Example[],
-  templates: Template[],
-  formatTemplateBlocks: (template: Template) => string
-): { contents: any[], tokenCount: number } => {
-  let totalText = '';
-  const contents: any[] = [];
+  promptTemplate: PromptTemplate
+) => {
+  // Cache the formatted content and its token count
+  const [formattedExamples, setFormattedExamples] = useState<string>("");
+  const [formattedTemplate, setFormattedTemplate] = useState<string>("");
   
-  // Build examples section (if any)
-  if (examples.length > 0) {
-    // Format all examples into a single message
-    let examplesText = "";
+  // Cache computation references
+  const examplesRef = useRef<Example[]>(examples);
+  const templateRef = useRef<PromptTemplate>(promptTemplate);
+  
+  // Update the examples format and token count when examples change
+  useEffect(() => {
+    // Skip if no change
+    if (examplesRef.current === examples && examples.length === examplesRef.current.length) {
+      return;
+    }
     
-    examples.forEach((example, idx) => {
+    // Update reference
+    examplesRef.current = examples;
+    
+    // Format examples
+    let examplesText = "";
+    examples.forEach((example) => {
       const labels = exampleTypeLabels[example.type];
-      // Include just the example content with minimal formatting
       examplesText += `${labels.first}:\n${example.firstField}\n\n`;
       examplesText += `${labels.second}:\n${example.secondField}\n\n\n`;
     });
     
-    console.log('[Debug] Examples content:', examplesText);
-    totalText += examplesText;
-    contents.push({ 
-      role: 'user' as const, 
-      parts: [{ text: examplesText }] 
-    });
-  }
-  
-  // Build templates section (if any)
-  if (templates.length > 0) {
-    // Format all templates into a single message
-    let templatesText = "";
+    setFormattedExamples(examplesText);
     
-    templates.forEach((template, idx) => {
-      // Include just the formatted template content
-      templatesText += formatTemplateBlocks(template) + "\n\n";
-    });
+  }, [examples, formattedTemplate]);
+  
+  // Update the template format and token count when template changes
+  useEffect(() => {
+    // Skip if no change
+    if (templateRef.current === promptTemplate) {
+      return;
+    }
     
-    console.log('[Debug] Templates content:', templatesText);
-    totalText += templatesText;
-    contents.push({ 
-      role: 'user' as const, 
-      parts: [{ text: templatesText }] 
-    });
-  }
+    // Update reference
+    templateRef.current = promptTemplate;
+    
+    // Format template
+    const templateText = formatPromptTemplate(promptTemplate);
+    
+    // Only log a truncated version to avoid console spam
+    if (templateText.length > 500) {
+      console.log('[Debug] Template content (truncated):', templateText.substring(0, 500) + '...');
+    } else if (templateText.length > 0) {
+      console.log('[Debug] Template content:', templateText);
+    }
+    
+    setFormattedTemplate(templateText);
+    
+  }, [promptTemplate, formattedExamples]);
   
-  // Build contents for conversation messages
-  const conversationMessages = userMessage ? [...messages, userMessage] : messages;
-  const conversationContents = conversationMessages.map(msg => {
-    totalText += msg.content;
-    return {
-      role: msg.role === 'assistant' ? 'model' : 'user' as const,
-      parts: [{ text: msg.content }]
-    };
-  });
-  
-  // Combine all contents
-  contents.push(...conversationContents);
-  
-  // Log the full conversation payload
-  console.log('[Debug] Full conversation payload:', {
-    examplesCount: examples.length,
-    templatesCount: templates.length,
-    messagesCount: conversationMessages.length,
-    totalTokens: estimateTokenCount(totalText),
-    contents
-  });
-  
-  // Estimate token count
-  const tokenCount = estimateTokenCount(totalText);
-  
-  return { contents, tokenCount };
+  // Return the formatted content and token count
+  return {
+    formattedExamples,
+    formattedTemplate,
+    // Helper to get API contents
+    getExamplesAndTemplateContents: useCallback(() => {
+      const contents: any[] = [];
+      
+      // Add examples if any
+      if (formattedExamples) {
+        contents.push({
+          role: 'user' as const,
+          parts: [{ text: formattedExamples }]
+        });
+      }
+      
+      // Add template if any
+      if (formattedTemplate) {
+        contents.push({
+          role: 'user' as const,
+          parts: [{ text: formattedTemplate }]
+        });
+      }
+      
+      return contents;
+    }, [formattedExamples, formattedTemplate])
+  };
 };
 
 // Check if localStorage is available
@@ -151,7 +164,27 @@ const isLocalStorageAvailable = () => {
   }
 };
 
+// Add performance monitoring for UI updates
+function useRenderCount(componentName: string) {
+  const count = useRef(0);
+  count.current++;
+  
+  useEffect(() => {
+    console.log(`${componentName} rendered (${count.current})`);
+  });
+}
+
 function App() {
+  // Performance tracking for the App component
+  useRenderCount('App');
+  const renderStartTime = useRef(performance.now());
+  
+  useEffect(() => {
+    const renderTime = performance.now() - renderStartTime.current;
+    console.log(`App render completed in ${renderTime}ms`);
+    renderStartTime.current = performance.now();
+  });
+  
   const [messages, setMessages] = useState<Message[]>(() => {
     if (isLocalStorageAvailable()) {
       try {
@@ -168,7 +201,6 @@ function App() {
   });
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [tokenCount, setTokenCount] = useState(0);
   
   // API key state
   const [apiKey, setApiKey] = useState<string>(() => {
@@ -207,8 +239,12 @@ function App() {
     }
   }, [isConfigDialogOpen, apiKey]);
   
-  // Model selection state
-  const [models, setModels] = useState<Model[]>([]);
+  // Model selection constant
+  const models: Model[] = [
+        { name: "gemini-2.5-pro-preview-03-25", displayName: "Gemini 2.5 Pro Preview" },
+        { name: "gemini-2.0-flash", displayName: "Gemini 2.0 Flash" },
+        { name: "gemini-2.0-flash-thinking-exp-01-21", displayName: "Gemini 2.0 Flash Thinking" },
+      ];
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     if (isLocalStorageAvailable()) {
       try {
@@ -222,12 +258,11 @@ function App() {
     }
     return "gemini-2.0-flash"; // Default model
   });
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
   
   // Sidebar state - now with individual section toggles
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isExamplesOpen, setIsExamplesOpen] = useState(true);
-  const [isTemplatesOpen, setIsTemplatesOpen] = useState(true);
+  const [isTemplateOpen, setIsTemplateOpen] = useState(true);
   
   // For auto-resizing textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -250,19 +285,7 @@ function App() {
     scrollToBottom();
   }, [messages]);
   
-  // Function to resize textarea
-  const resizeTextarea = () => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
-    }
-  };
-  
-  // Resize textarea when input changes
-  useEffect(() => {
-    resizeTextarea();
-  }, [input]);
+  // Note: The original resizeTextarea function has been replaced with an instrumented version below
   
   // Examples for few-shot learning - initialize with data from localStorage if it exists
   const [examples, setExamples] = useState<Example[]>(() => {
@@ -285,62 +308,27 @@ function App() {
     return [];
   });
   
-  // Templates for few-shot learning - initialize with data from localStorage if it exists
-  const [templates, setTemplates] = useState<Template[]>(() => {
+  // Prompt template for few-shot learning - initialize with data from localStorage if it exists
+  const [promptTemplate, setPromptTemplate] = useState<PromptTemplate>(() => {
     if (isLocalStorageAvailable()) {
       try {
-        const savedTemplates = localStorage.getItem(TEMPLATES_STORAGE_KEY);
-        if (savedTemplates) {
-          console.log('Initializing templates from localStorage');
-          const parsedTemplates = JSON.parse(savedTemplates);
-          
-          // Migrate old template format to new format if needed
-          const migratedTemplates = parsedTemplates.map((template: any) => {
-            // Check if this is an old format template (has blocks instead of inputs)
-            if (template.blocks && !template.inputs) {
-              console.log('Migrating template from old format');
-              return {
-                id: template.id,
-                inputs: template.blocks.map((block: any) => {
-                  // Convert each block to an input
-                  return {
-                    id: block.id.replace('block', 'input'),
-                    description: block.type === 'text' ? 'Description' : 'Input',
-                    content: block.content
-                  };
-                })
-              };
-            }
-            // Return template if it's already in the new format
-            return template;
-          });
-          
-          return migratedTemplates;
+        const savedTemplate = localStorage.getItem(PROMPT_TEMPLATE_STORAGE_KEY);
+        if (savedTemplate) {
+          console.log('Initializing prompt template from localStorage');
+          return JSON.parse(savedTemplate);
         }
       } catch (error) {
-        console.error("Failed to load templates from localStorage during initialization:", error);
+        console.error("Failed to load prompt template from localStorage during initialization:", error);
       }
     }
-    // Return default template if no templates exist
-    return [createDefaultTemplate()];
+    
+    // Return default template if none exists
+    return createDefaultTemplate();
   });
   
   // For message editing
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [editingMessageContent, setEditingMessageContent] = useState("");
-  
-  // Save templates to localStorage whenever they change
-  useEffect(() => {
-    if (isLocalStorageAvailable() && (templates.length > 0 || localStorage.getItem(TEMPLATES_STORAGE_KEY))) {
-      try {
-        const templatesJSON = JSON.stringify(templates);
-        localStorage.setItem(TEMPLATES_STORAGE_KEY, templatesJSON);
-        console.log('Templates saved to localStorage:', templates);
-      } catch (error) {
-        console.error("Failed to save templates to localStorage:", error);
-      }
-    }
-  }, [templates]);
   
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -367,79 +355,25 @@ function App() {
     }
   }, [selectedModel]);
   
-  // Fetch available models from Google API
-  const fetchModels = async () => {
-    setIsLoadingModels(true);
-    try {
-      // Hardcoded models instead of fetching from API
-      const hardcodedModels = [
-        { name: "gemini-2.5-pro-preview-03-25", displayName: "Gemini 2.5 Pro Preview" },
-        { name: "gemini-2.0-flash", displayName: "Gemini 2.0 Flash" },
-        { name: "gemini-2.0-flash-thinking-exp-01-21", displayName: "Gemini 2.0 Flash Thinking" },
-      ];
-      
-      console.log('Using hardcoded Gemini models:', hardcodedModels);
-      setModels(hardcodedModels);
-      
-      // If the current selectedModel isn't in the list, select the first one
-      if (!hardcodedModels.some((m: Model) => m.name === selectedModel)) {
-        setSelectedModel(hardcodedModels[0].name);
-      }
-    } catch (error) {
-      console.error("Error setting models:", error);
-    } finally {
-      setIsLoadingModels(false);
-    }
-  };
+
+
   
-  // Initialize models on component mount
-  useEffect(() => {
-    fetchModels();
-  }, []);
+  // Use our new formatter hook to efficiently manage examples and template
+  const {
+    formattedExamples,
+    formattedTemplate,
+    getExamplesAndTemplateContents
+  } = useExamplesAndTemplateFormatter(examples, promptTemplate);
   
-  // Update token count when input or examples/templates change
-  useEffect(() => {
-    if (input.trim()) {
-      let userMessage: Message = { role: 'user', content: input };
-      
-      const { tokenCount } = generateContentsAndCountTokens(
-        messages,
-        userMessage,
-        examples, // Use all examples
-        templates,
-        formatTemplateBlocks
-      );
-      setTokenCount(tokenCount);
-    } else {
-      // Always calculate tokens for the conversation, examples, and templates
-      // Even when input is empty
-      const { tokenCount } = generateContentsAndCountTokens(
-        messages,
-        null,
-        examples, // Use all examples
-        templates,
-        formatTemplateBlocks
-      );
-      setTokenCount(tokenCount);
-    }
-  }, [input, messages, examples, templates]);
+
   
-  // Enable dark mode by default
+
+  // Add tracking for input changes
   useEffect(() => {
-    document.documentElement.classList.add('dark');
-  }, []);
+    console.log(`Input changed to length: ${input.length}`);
+  }, [input]);
   
-  // Calculate initial token count on component mount
-  useEffect(() => {
-    const { tokenCount } = generateContentsAndCountTokens(
-      messages,
-      null,
-      examples, // Use all examples
-      templates,
-      formatTemplateBlocks
-    );
-    setTokenCount(tokenCount);
-  }, []);
+
   
   // Save examples to localStorage whenever they change
   useEffect(() => {
@@ -454,6 +388,37 @@ function App() {
     }
   }, [examples]);
   
+  // Generate API payload only when actually needed (not on every keystroke)
+  const generateApiPayload = useCallback((
+    currentMessages: Message[],
+    additionalMessage: Message | null = null
+  ) => {
+    // Start with static content
+    const contents = getExamplesAndTemplateContents();
+    
+    // Add conversation messages
+    const conversationMessages = additionalMessage 
+      ? [...currentMessages, additionalMessage] 
+      : currentMessages;
+    
+    conversationMessages.forEach(msg => {
+      contents.push({
+        role: msg.role === 'assistant' ? 'model' : 'user' as const,
+        parts: [{ text: msg.content }]
+      });
+    });
+    
+    // Log simplified payload info (not the huge payload itself)
+    console.log('[Debug] Payload info:', {
+      examplesCount: examples.length,
+      hasPromptTemplate: !!promptTemplate?.inputs?.length,
+      messagesCount: conversationMessages.length
+    });
+    
+    return contents;
+  }, [examples.length, promptTemplate, getExamplesAndTemplateContents]);
+  
+  // Optimized handleSendMessage function
   const handleSendMessage = async () => {
     // Require input text
     if (!input.trim()) {
@@ -466,12 +431,14 @@ function App() {
       return;
     }
     
-    // Add user message to chat
+    // Create user message
     const userMessage: Message = { 
       role: 'user', 
       content: input,
       id: `user-${Date.now()}`
     };
+    
+    // Add user message to chat
     setMessages(prev => [...prev, userMessage]);
     
     // Reset input
@@ -483,17 +450,8 @@ function App() {
     scrollToBottom(false);
     
     try {
-      // Use the utility function to generate contents and count tokens
-      const { contents, tokenCount } = generateContentsAndCountTokens(
-        messages, 
-        userMessage, 
-        examples, // Use all examples
-        templates, 
-        formatTemplateBlocks
-      );
-      
-      // Update token count in state
-      setTokenCount(tokenCount);
+      // Generate API payload only when needed
+      const contents = generateApiPayload(messages, userMessage);
       
       // Call Gemini API
       const response = await fetch(
@@ -554,15 +512,6 @@ function App() {
       localStorage.removeItem(MESSAGES_STORAGE_KEY);
     }
     
-    // Recalculate token count after clearing chat
-    const { tokenCount } = generateContentsAndCountTokens(
-      [],
-      null,
-      examples, // Use all examples
-      templates,
-      formatTemplateBlocks
-    );
-    setTokenCount(tokenCount);
   };
   
   // Functions for editing messages
@@ -605,17 +554,8 @@ function App() {
       setIsLoading(true);
       
       try {
-        // Use the utility function to generate contents and count tokens
-        const { contents, tokenCount } = generateContentsAndCountTokens(
-          truncatedMessages,
-          null,
-          examples, // Use all examples
-          templates,
-          formatTemplateBlocks
-        );
-        
-        // Update token count in state
-        setTokenCount(tokenCount);
+        // Generate API payload only when needed (using truncated messages)
+        const contents = generateApiPayload(truncatedMessages);
         
         // Call Gemini API
         const response = await fetch(
@@ -670,8 +610,8 @@ function App() {
     }
   };
 
-  // Add a new function to run examples and templates without a user message
-  const handleRunExamplesAndTemplates = async () => {
+  // Add a new function to run examples and template without a user message
+  const handleRunExamplesAndTemplate = async () => {
     // Check if API key is set
     if (!apiKey) {
       setIsConfigDialogOpen(true);
@@ -691,20 +631,11 @@ function App() {
       // Add the system message to chat
       setMessages(prev => [...prev, systemMessage]);
       
-      // Scroll to bottom immediately when running examples/templates
+      // Scroll to bottom immediately when running examples/template
       scrollToBottom(false);
       
-      // Use the utility function to generate contents and count tokens
-      const { contents, tokenCount } = generateContentsAndCountTokens(
-        messages,
-        systemMessage,
-        examples,
-        templates,
-        formatTemplateBlocks
-      );
-      
-      // Update token count in state
-      setTokenCount(tokenCount);
+      // Generate API payload only when needed
+      const contents = generateApiPayload(messages, systemMessage);
       
       // Call Gemini API
       const response = await fetch(
@@ -758,6 +689,39 @@ function App() {
     }
   };
 
+  // Enable dark mode by default
+  useEffect(() => {
+    document.documentElement.classList.add('dark');
+  }, []);
+  
+  // Add logging to setInput with performance tracking
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const start = performance.now();
+    console.log('handleInputChange called', e.target.value.length);
+    setInput(e.target.value);
+    const end = performance.now();
+    console.log(`setInput operation took ${end - start}ms`);
+  };
+  
+  // Optimize textarea render performance with memoized styles
+  const textareaStyle = useMemo(() => {
+    return { 
+      height: textareaRef.current?.scrollHeight 
+        ? `${Math.min(textareaRef.current.scrollHeight, 180)}px` 
+        : '60px' 
+    };
+  }, []);
+  
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const start = performance.now();
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+    const end = performance.now();
+    console.log(`keyDown handler took ${end - start}ms`);
+  }, [handleSendMessage]);
+  
   return (
     <div className="flex flex-col h-screen min-h-svh bg-background text-foreground antialiased">
       {/* Global Header - Spans the entire width */}
@@ -770,7 +734,7 @@ function App() {
               size="icon" 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className="text-muted-foreground hover:text-foreground transition-colors duration-200"
-              title={isSidebarOpen ? "Hide examples & templates" : "Show examples & templates"}
+              title={isSidebarOpen ? "Hide examples & template" : "Show examples & template"}
             >
               {isSidebarOpen ? (
                 <PanelLeftClose className="h-5 w-5" />
@@ -782,11 +746,7 @@ function App() {
             {/* Centered Title */}
             <div className="flex-grow flex items-center justify-center">
               <a href="/" className="text-xl font-semibold tracking-tight text-foreground flex items-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-2 rounded-full bg-primary/10 p-1">
-                  <path d="M9 2H15C20 2 22 4 22 9V15C22 20 20 22 15 22H9C4 22 2 20 2 15V9C2 4 4 2 9 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M8.5 12H15.5" stroke="currentColor" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M12 15.5V8.5" stroke="currentColor" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <PlusSquare className="h-[18px] w-[18px] mr-2 rounded-full bg-primary/10 p-1" />
                 <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Few-Shot Chatbot</span>
               </a>
             </div>
@@ -837,24 +797,24 @@ function App() {
 
       {/* Main Content Area with Sidebar and Conversation */}
       <div className="flex flex-grow overflow-hidden">
-        {/* Sidebar with side-by-side Examples and Templates sections */}
+        {/* Sidebar with side-by-side Examples and Template sections */}
         <div className={`flex-shrink-0 border-r border-border/30 transition-all duration-300 ${
           isSidebarOpen 
-            ? (isExamplesOpen && isTemplatesOpen) 
+            ? (isExamplesOpen && isTemplateOpen) 
                 ? 'w-[40%] max-w-[1000px]' // Full width when both are open
-                : (isExamplesOpen || isTemplatesOpen)
+                : (isExamplesOpen || isTemplateOpen)
                     ? 'w-[30%] max-w-[800px]' // 30% width when only one is open
                     : 'w-[300px]' // Width for both collapsed sections with titles (150px + 150px)
             : 'w-0 overflow-hidden'
         }`}>
-          {/* Vertical split layout for Examples and Templates */}
+          {/* Vertical split layout for Examples and Template */}
           <div className="flex h-full bg-background/50">
             {/* Examples Section - Left side */}
             <div className={`flex flex-col h-full border-r border-border/40 transition-all duration-300 ${
               !isExamplesOpen
                 ? 'w-[150px]' // Increased width for collapsed state
-                : !isTemplatesOpen
-                  ? 'w-[calc(100%-150px)]' // When templates are collapsed, examples take most space
+                : !isTemplateOpen
+                  ? 'w-[calc(100%-150px)]' // When template is collapsed, examples take most space
                   : 'w-1/2' // Equal split when both are open
             }`}>
               {/* Examples Header - Entire header is clickable */}
@@ -876,15 +836,11 @@ function App() {
                   {/* Direction indicator - shown as compact version when collapsed */}
                   {isExamplesOpen ? (
                     <div className="flex justify-center items-center h-7 w-7 text-muted-foreground flex-shrink-0">
-                      <svg width="14" height="14" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M8.84182 3.13514C9.04327 3.32401 9.05348 3.64042 8.86462 3.84188L5.43521 7.49991L8.86462 11.1579C9.05348 11.3594 9.04327 11.6758 8.84182 11.8647C8.64036 12.0535 8.32394 12.0433 8.13508 11.8419L4.38508 7.84188C4.20477 7.64955 4.20477 7.35027 4.38508 7.15794L8.13508 3.15794C8.32394 2.95648 8.64036 2.94628 8.84182 3.13514Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
-                      </svg>
+                      <ChevronLeft className="h-[14px] w-[14px]" />
                     </div>
                   ) : (
                     <div className="flex justify-center items-center h-5 w-5 text-muted-foreground bg-transparent flex-shrink-0 ">
-                      <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M6.1584 3.13508C6.35985 2.94621 6.67627 2.95642 6.86514 3.15788L10.6151 7.15788C10.7954 7.3502 10.7954 7.64949 10.6151 7.84182L6.86514 11.8418C6.67627 12.0433 6.35985 12.0535 6.1584 11.8646C5.95694 11.6757 5.94673 11.3593 6.1356 11.1579L9.565 7.49985L6.1356 3.84182C5.94673 3.64036 5.95694 3.32394 6.1584 3.13508Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
-                      </svg>
+                      <ChevronRight className="h-[12px] w-[12px]" />
                     </div>
                   )}
                 </div>
@@ -905,53 +861,49 @@ function App() {
               )}
             </div>
             
-            {/* Templates Section - Right side */}
+            {/* Template Section - Right side */}
             <div className={`flex flex-col h-full transition-all duration-300 ${
-              !isTemplatesOpen
+              !isTemplateOpen
                 ? 'w-[150px]' // Increased width for collapsed state
                 : !isExamplesOpen
-                  ? 'w-[calc(100%-150px)]' // When examples are collapsed, templates take most space
+                  ? 'w-[calc(100%-150px)]' // When examples are collapsed, template takes most space
                   : 'w-1/2' // Equal split when both are open
             }`}>
-              {/* Templates Header - Now entire header is clickable */}
+              {/* Template Header - Now entire header is clickable */}
               <div 
                 className="h-12 border-b border-border/30 flex items-center bg-card/40 cursor-pointer transition-colors hover:bg-card/80"
-                onClick={() => setIsTemplatesOpen(!isTemplatesOpen)}
-                title={isTemplatesOpen ? "Collapse templates" : "Expand templates"}
+                onClick={() => setIsTemplateOpen(!isTemplateOpen)}
+                title={isTemplateOpen ? "Collapse prompt template" : "Expand prompt template"}
               >
-                <div className={`flex items-center justify-between w-full ${isTemplatesOpen ? 'px-3' : 'px-4'}`}>
+                <div className={`flex items-center justify-between w-full ${isTemplateOpen ? 'px-3' : 'px-4'}`}>
                   <h3 className="text-sm font-medium flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
-                    <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Templates</span>
-                    {templates.length > 0 && (
+                    <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Prompt Template</span>
+                    {promptTemplate?.inputs?.length > 0 && (
                       <span className="text-xs text-muted-foreground bg-muted/40 px-1.5 py-0 rounded-full flex-shrink-0 min-w-[18px] text-center">
-                        {templates.length}
+                        {promptTemplate.inputs.length}
                       </span>
                     )}
                   </h3>
                   
                   {/* Direction indicator - shown as compact version when collapsed */}
-                  {isTemplatesOpen ? (
+                  {isTemplateOpen ? (
                     <div className="flex justify-center items-center h-7 w-7 text-muted-foreground flex-shrink-0">
-                      <svg width="14" height="14" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M8.84182 3.13514C9.04327 3.32401 9.05348 3.64042 8.86462 3.84188L5.43521 7.49991L8.86462 11.1579C9.05348 11.3594 9.04327 11.6758 8.84182 11.8647C8.64036 12.0535 8.32394 12.0433 8.13508 11.8419L4.38508 7.84188C4.20477 7.64955 4.20477 7.35027 4.38508 7.15794L8.13508 3.15794C8.32394 2.95648 8.64036 2.94628 8.84182 3.13514Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
-                      </svg>
+                      <ChevronLeft className="h-[14px] w-[14px]" />
                     </div>
                   ) : (
                     <div className="flex justify-center items-center h-5 w-5 text-muted-foreground bg-transparent flex-shrink-0 ">
-                      <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M6.1584 3.13508C6.35985 2.94621 6.67627 2.95642 6.86514 3.15788L10.6151 7.15788C10.7954 7.3502 10.7954 7.64949 10.6151 7.84182L6.86514 11.8418C6.67627 12.0433 6.35985 12.0535 6.1584 11.8646C5.95694 11.6757 5.94673 11.3593 6.1356 11.1579L9.565 7.49985L6.1356 3.84182C5.94673 3.64036 5.95694 3.32394 6.1584 3.13508Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
-                      </svg>
+                      <ChevronRight className="h-[12px] w-[12px]" />
                     </div>
                   )}
                 </div>
               </div>
               
-              {/* Templates Content */}
-              {isTemplatesOpen && (
+              {/* Template Content */}
+              {isTemplateOpen && (
                 <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70 p-4 pb-6">
-                  <Templates 
-                    templates={templates}
-                    setTemplates={setTemplates as React.Dispatch<React.SetStateAction<Template[]>>}
+                  <PromptTemplateEditor 
+                    promptTemplate={promptTemplate}
+                    setPromptTemplate={setPromptTemplate}
                   />
                 </div>
               )}
@@ -968,31 +920,7 @@ function App() {
                 <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Conversation</span>
                 
                 <div className="flex items-center gap-2">
-                  {/* Token count display */}
-                  <div 
-                    className="text-xs text-muted-foreground bg-background/70 px-3 py-1 rounded-full border border-border/20 shadow-sm hover:bg-background cursor-pointer group transition-colors duration-200 flex items-center gap-2"
-                    title="Estimated token count"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <svg width="10" height="10" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M2.5 4C2.5 3.72386 2.72386 3.5 3 3.5H12C12.2761 3.5 12.5 3.72386 12.5 4C12.5 4.27614 12.2761 4.5 12 4.5H3C2.72386 4.5 2.5 4.27614 2.5 4ZM2.5 8C2.5 7.72386 2.72386 7.5 3 7.5H12C12.2761 7.5 12.5 7.72386 12.5 8C12.5 8.27614 12.2761 8.5 12 8.5H3C2.72386 8.5 2.5 8.27614 2.5 8ZM2.5 12C2.5 11.7239 2.72386 11.5 3 11.5H12C12.2761 11.5 12.5 11.7239 12.5 12C12.5 12.2761 12.2761 12.5 12 12.5H3C2.72386 12.5 2.5 12.2761 2.5 12Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
-                      </svg>
-                      ~{tokenCount.toLocaleString()} tokens
-                    </div>
-                    
-                    {/* Tooltip */}
-                    <div className="hidden group-hover:block absolute top-full left-0 mt-2 w-56 bg-background/95 border border-border/40 shadow-lg rounded-lg p-2 text-xs z-10">
-                      <p className="font-medium mb-1">Token Estimate:</p>
-                      <p className="mb-1">• {examples.length} Examples</p>
-                      <p className="mb-1">• {templates.length} Templates</p>
-                      <p className="mb-1">• Conversation history</p>
-                      {input.trim() && <p className="mb-1">• Current message</p>}
-                      <div className="mt-2 pt-1 border-t border-border/50">
-                        <p className="text-[10px] font-medium">Based on ~4 chars per token</p>
-                      </div>
-                    </div>
-                  </div>
-
+     
                   {/* Model selector dropdown */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -1001,9 +929,7 @@ function App() {
                         size="sm" 
                         className="text-xs flex items-center gap-1.5 bg-background/70 text-muted-foreground h-7 px-3 border-border/20 shadow-sm hover:bg-background"
                       >
-                        <svg width="10" height="10" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
-                          <path d="M7.28856 0.796908C7.42258 0.734364 7.57742 0.734364 7.71144 0.796908L13.7114 3.59691C13.8875 3.67906 14 3.85574 14 4.05V10.95C14 11.1443 13.8875 11.3209 13.7114 11.4031L7.71144 14.2031C7.57742 14.2656 7.42258 14.2656 7.28856 14.2031L1.28856 11.4031C1.11252 11.3209 1 11.1443 1 10.95V4.05C1 3.85574 1.11252 3.67906 1.28856 3.59691L7.28856 0.796908ZM2 4.80578L7 6.93078V12.9649L2 10.8399V4.80578ZM8 12.9649L13 10.8399V4.80578L8 6.93078V12.9649ZM7.5 6.05672L12.2678 4.02866L7.5 1.80578L2.73221 4.02866L7.5 6.05672Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
-                        </svg>
+                        <Box className="h-[10px] w-[10px] flex-shrink-0" />
                         <span className="truncate max-w-28">
                           {models.find((m: Model) => m.name === selectedModel)?.displayName || selectedModel}
                         </span>
@@ -1041,8 +967,8 @@ function App() {
                 ref={chatContainerRef}
                 className="space-y-4 rounded-2xl border border-border/40 p-5 bg-card/20 backdrop-blur-sm min-h-[calc(100vh-260px)] overflow-y-auto scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-background/20 hover:scrollbar-thumb-border/70"
               > 
-                {/* Examples and Templates Section */}
-                {(examples.length > 0 || templates.length > 0) && (
+                {/* Examples and Template Section */}
+                {(examples.length > 0 || promptTemplate?.inputs?.length > 0) && (
                   <div className="mb-5 pb-5 border-b border-border/30">
                     
                     {/* Section Title */}
@@ -1092,36 +1018,31 @@ function App() {
                       </div>
                     )}
                     
-                    {/* Templates Display */}
-                    {templates.length > 0 && (
+                    {/* Template Display */}
+                    {promptTemplate?.inputs?.length > 0 && (
                       <div>
                         <div className="flex items-center mb-2">
                           <span className="text-xs font-semibold bg-primary/10 text-primary px-2 py-1 rounded-md">
-                            {templates.length} Template{templates.length !== 1 ? 's' : ''}
+                            Prompt Template ({promptTemplate.inputs.length} input{promptTemplate.inputs.length !== 1 ? 's' : ''})
                           </span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                          {templates.map((template, idx) => (
+                          {promptTemplate.inputs.map((input, inputIdx) => (
                             <div 
-                              key={template.id} 
+                              key={input.id} 
                               className="bg-primary/5 border border-primary/10 rounded-lg p-2 text-xs flex flex-col"
                             >
-                              <div className="font-medium text-primary/80 mb-1">Template {idx + 1}</div>
+                              <div className="font-medium text-primary/80 mb-1">Input {inputIdx + 1}</div>
                               <div className="space-y-1">
-                                {template.inputs.map((input, inputIdx) => {
-                                  // Truncate long content
-                                  const truncateText = (text: string, maxLength = 30) => 
-                                    text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
-                                  
-                                  return (
-                                    <div key={input.id} className="text-muted-foreground text-[10px] line-clamp-1 py-0.5">
-                                      <span className="font-medium inline-block min-w-[40%] max-w-[60%] truncate">
-                                        {input.description}:
-                                      </span> 
-                                      <span className="opacity-80">{truncateText(input.content)}</span>
-                                    </div>
-                                  );
-                                })}
+                                {/* Truncate long content */}
+                                <div className="text-muted-foreground text-[10px] line-clamp-1 py-0.5">
+                                  <span className="font-medium inline-block min-w-[40%] max-w-[60%] truncate">
+                                    {input.description}:
+                                  </span> 
+                                  <span className="opacity-80">
+                                    {input.content.length > 30 ? `${input.content.substring(0, 30)}...` : input.content}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -1141,9 +1062,7 @@ function App() {
                           size="sm" 
                           className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5"
                         >
-                          <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M5.5 1C5.22386 1 5 1.22386 5 1.5C5 1.77614 5.22386 2 5.5 2H9.5C9.77614 2 10 1.77614 10 1.5C10 1.22386 9.77614 1 9.5 1H5.5ZM3 3.5C3 3.22386 3.22386 3 3.5 3H11.5C11.7761 3 12 3.22386 12 3.5C12 3.77614 11.7761 4 11.5 4H3.5C3.22386 4 3 3.77614 3 3.5ZM5.5 5.5C5.5 5.22386 5.72386 5 6 5C6.27614 5 6.5 5.22386 6.5 5.5V12.5C6.5 12.7761 6.27614 13 6 13C5.72386 13 5.5 12.7761 5.5 12.5V5.5ZM8.5 5.5C8.5 5.22386 8.72386 5 9 5C9.27614 5 9.5 5.22386 9.5 5.5V12.5C9.5 12.7761 9.27614 13 9 13C8.72386 13 8.5 12.7761 8.5 12.5V5.5ZM2.5 5C2.77614 5 3 5.22386 3 5.5V13.5C3 13.7761 3.22386 14 3.5 14H11.5C11.7761 14 12 13.7761 12 13.5V5.5C12 5.22386 12.2239 5 12.5 5C12.7761 5 13 5.22386 13 5.5V13.5C13 14.3284 12.3284 15 11.5 15H3.5C2.67157 15 2 14.3284 2 13.5V5.5C2 5.22386 2.22386 5 2.5 5Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
-                          </svg>
+                          <Trash2 className="h-[12px] w-[12px]" />
                           Clear messages
                         </Button>
                       </DropdownMenuTrigger>
@@ -1162,7 +1081,7 @@ function App() {
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <div className="max-w-md">
-                      <h3 className="text-lg font-medium mb-4">Start with examples & templates</h3>
+                      <h3 className="text-lg font-medium mb-4">Start with examples & template</h3>
                       
                       <div className="flex gap-4 justify-center">
                         <div className="flex items-center gap-2 bg-muted/20 px-4 py-3 rounded-lg">
@@ -1176,9 +1095,7 @@ function App() {
                         
                         <div className="flex items-center gap-2 bg-muted/20 px-4 py-3 rounded-lg">
                           <div className="bg-primary rounded-full p-1.5 flex-shrink-0">
-                            <svg width="14" height="14" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-primary-foreground">
-                              <path d="M3.5 8.5L7 12L13 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
+                            <Check className="h-3.5 w-3.5 text-primary-foreground" />
                           </div>
                           <span className="text-sm">Click RUN</span>
                         </div>
@@ -1219,9 +1136,7 @@ function App() {
                                 onClick={() => startEditingMessage(index)}
                                 title="Edit message"
                               >
-                                <svg width="14" height="14" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5">
-                                  <path d="M11.8536 1.14645C11.6583 0.951184 11.3417 0.951184 11.1465 1.14645L3.71455 8.57836C3.62459 8.66832 3.55263 8.77461 3.50251 8.89155L2.04044 12.303C1.9599 12.491 2.00189 12.709 2.14646 12.8536C2.29103 12.9981 2.50905 13.0401 2.69697 12.9596L6.10847 11.4975C6.2254 11.4474 6.3317 11.3754 6.42166 11.2855L13.8536 3.85355C14.0488 3.65829 14.0488 3.34171 13.8536 3.14645L11.8536 1.14645ZM4.42166 9.28547L11.5 2.20711L12.7929 3.5L5.71455 10.5784L4.21924 11.2192L3.78081 10.7808L4.42166 9.28547Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
-                                </svg>
+                                <Edit className="h-3.5 w-3.5" />
                               </Button>
                               {message.role === 'user' && (
                                 <Button 
@@ -1232,9 +1147,7 @@ function App() {
                                   title="Run from this message"
                                   disabled={isLoading}
                                 >
-                                  <svg width="14" height="14" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5">
-                                    <path d="M3.24182 2.32181C3.3919 2.23132 3.5784 2.22601 3.73338 2.30781L12.7334 7.05781C12.8974 7.14436 13 7.31457 13 7.5C13 7.68543 12.8974 7.85564 12.7334 7.94219L3.73338 12.6922C3.5784 12.774 3.3919 12.7687 3.24182 12.6782C3.09175 12.5877 3 12.4252 3 12.25V2.75C3 2.57476 3.09175 2.4123 3.24182 2.32181ZM4 3.57925V11.4207L11.4338 7.5L4 3.57925Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
-                                  </svg>
+                                  <Play className="h-3.5 w-3.5" />
                                 </Button>
                               )}
                             </>
@@ -1266,9 +1179,7 @@ function App() {
                                 className="mb-2 text-xs text-muted-foreground flex items-center gap-1"
                                 title="This message was created with specific examples"
                               >
-                                <svg width="12" height="12" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M7.5 2C4.4624 2 2 4.4624 2 7.5C2 10.5376 4.4624 13 7.5 13C10.5376 13 13 10.5376 13 7.5C13 4.4624 10.5376 2 7.5 2ZM1 7.5C1 3.91015 3.91015 1 7.5 1C11.0899 1 14 3.91015 14 7.5C14 11.0899 11.0899 14 7.5 14C3.91015 14 1 11.0899 1 7.5ZM7 4.5C7 4.22386 7.22386 4 7.5 4C7.77614 4 8 4.22386 8 4.5V8.5C8 8.77614 7.77614 9 7.5 9C7.22386 9 7 8.77614 7 8.5V4.5ZM7 10.5C7 10.2239 7.22386 10 7.5 10C7.77614 10 8 10.2239 8 10.5C8 10.7761 7.77614 11 7.5 11C7.22386 11 7 10.7761 7 10.5Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
-                                </svg>
+                                <InfoIcon className="h-[12px] w-[12px]" />
                                 <span>Examples included in conversation</span>
                               </div>
                             )}
@@ -1418,20 +1329,11 @@ function App() {
                     <Textarea
                       ref={textareaRef}
                       value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage();
-                        }
-                      }}
+                      onChange={handleInputChange}
+                      onKeyDown={handleKeyDown}
                       placeholder="Type your message..."
                       className="w-full resize-none overflow-y-auto bg-background text-foreground rounded-2xl min-h-[60px] max-h-[180px] py-4 px-4 border-border/70 focus:outline-none focus:border-primary/30 focus:ring-1 focus:ring-primary/20 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent shadow-sm transition-all duration-200 ease-in-out hover:shadow-md"
-                      style={{ 
-                        height: textareaRef.current?.scrollHeight 
-                          ? `${Math.min(textareaRef.current.scrollHeight, 180)}px` 
-                          : '60px' 
-                      }}
+                      style={textareaStyle}
                     />
                   </div>
                   
@@ -1450,19 +1352,19 @@ function App() {
                 
                 {/* RUN Button - Only enabled if there are examples or templates */}
                 <Button 
-                  onClick={handleRunExamplesAndTemplates} 
-                  disabled={isLoading || (examples.length === 0 && templates.length === 0)}
+                  onClick={handleRunExamplesAndTemplate} 
+                  disabled={isLoading || (examples.length === 0 && (!promptTemplate || promptTemplate.inputs.length === 0))}
                   className="rounded-full h-12 px-5 text-sm font-medium flex-shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2"
-                  title="Run examples and templates to get AI response"
+                  title="Run examples and template to get AI response"
                 >
                   <span>RUN</span>
-                  {(examples.length > 0 || templates.length > 0) && (
+                  {(examples.length > 0 || (promptTemplate && promptTemplate.inputs.length > 0)) && (
                     <span className="text-xs bg-white/20 text-white px-1.5 py-0.5 rounded-full">
-                      {examples.length > 0 && templates.length > 0 
-                        ? `${examples.length}E + ${templates.length}T` 
+                      {examples.length > 0 && promptTemplate && promptTemplate.inputs.length > 0 
+                        ? `${examples.length}E + ${promptTemplate.inputs.length}I` 
                         : examples.length > 0 
                           ? `${examples.length}E` 
-                          : `${templates.length}T`}
+                          : `${promptTemplate.inputs.length}I`}
                     </span>
                   )}
                 </Button>
