@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { memo } from 'react';
 import { Button } from "@/components/ui/button";
 import { PlusCircle, X } from "lucide-react";
 import { EditableText } from "@/components/ui/editable-text";
 import { Textarea } from "@/components/ui/textarea";
 
 // Define PromptTemplate types
-export type PromptTemplate = {
+export type PromptTemplateType = {
   id: string;
   inputs: TemplateInput[];
 };
@@ -16,161 +16,9 @@ export type TemplateInput = {
   content: string;
 };
 
-// Local storage key for prompt template
-export const PROMPT_TEMPLATE_STORAGE_KEY = 'few-shot-chatbot-prompt-template';
-
-// Check if localStorage is available
-const isLocalStorageAvailable = () => {
-  try {
-    const testKey = 'test-localStorage';
-    localStorage.setItem(testKey, testKey);
-    localStorage.removeItem(testKey);
-    return true;
-  } catch (e) {
-    console.error('localStorage is not available:', e);
-    return false;
-  }
-};
-
-// Function to create default template
-export function createDefaultTemplate(): PromptTemplate {
-  return {
-    id: `template-default-${Date.now()}`,
-    inputs: [
-      {
-        id: "input-1",
-        description: "JavaScript code to convert to Scraper format",
-        content: `// Example: Convert this code to use the Scraper class
-const baseAPI = 'https://api.example.com';
-
-async function fetchData() {
-  try {
-    const response = await fetch(\`\${baseAPI}/data\`);
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error fetching data:', error);
-  }
-}
-`
-      }
-    ]
-  };
-}
-
-// Function to format template for the API - moved to App.tsx since it's used there
-// This is deprecated and will be removed from here
-// export const formatPromptTemplate = (template: PromptTemplate): string => {
-//   return template.inputs.map(input => {
-//     return `${input.description}:\n${input.content}`;
-//   }).join('\n\n');
-// };
-
-// Custom hook for efficient template management
-function usePromptTemplate(
-  initialTemplate: PromptTemplate, 
-  setParentTemplate: React.Dispatch<React.SetStateAction<PromptTemplate>>
-) {
-  // Local template state (direct reference, no copying)
-  const [template, setTemplate] = useState<PromptTemplate>(initialTemplate);
-  
-  // Batched updates for parent state
-  const pendingUpdatesRef = useRef(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Update local template when props change (only if reference changes)
-  useEffect(() => {
-    if (initialTemplate !== template) {
-      setTemplate(initialTemplate);
-    }
-  }, [initialTemplate]);
-  
-  // Function to save to localStorage and update parent with delay
-  const saveChanges = useCallback(() => {
-    // Clear any existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    
-    // Set pending flag
-    pendingUpdatesRef.current = true;
-    
-    // Schedule update after delay
-    timeoutRef.current = setTimeout(() => {
-      // Only update if there are pending changes
-      if (pendingUpdatesRef.current) {
-        // Update localStorage
-        if (isLocalStorageAvailable()) {
-          try {
-            localStorage.setItem(PROMPT_TEMPLATE_STORAGE_KEY, JSON.stringify(template));
-          } catch (error) {
-            console.error("Failed to save prompt template to localStorage:", error);
-          }
-        }
-        
-        // Update parent state
-        setParentTemplate(template);
-        
-        // Reset pending flag
-        pendingUpdatesRef.current = false;
-      }
-    }, 800); // Delay updates by 800ms
-    
-    // Clean up timeout on unmount
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [template, setParentTemplate]);
-  
-  // Trigger save on template change
-  useEffect(() => {
-    saveChanges();
-  }, [template, saveChanges]);
-  
-  return {
-    template,
-    setTemplate,
-    
-    // Template operations
-    addInput: useCallback(() => {
-      setTemplate(prev => ({
-        ...prev,
-        inputs: [
-          ...prev.inputs, 
-          {
-            id: `input-${Date.now()}`,
-            description: "New input",
-            content: ""
-          }
-        ]
-      }));
-    }, []),
-    
-    removeInput: useCallback((inputId: string) => {
-      setTemplate(prev => ({
-        ...prev,
-        inputs: prev.inputs.filter(input => input.id !== inputId)
-      }));
-    }, []),
-    
-    updateInput: useCallback((inputId: string, field: 'content' | 'description', value: string) => {
-      setTemplate(prev => ({
-        ...prev,
-        inputs: prev.inputs.map(input => 
-          input.id === inputId 
-            ? { ...input, [field]: value }
-            : input
-        )
-      }));
-    }, [])
-  };
-}
-
-interface PromptTemplateEditorProps {
-  promptTemplate: PromptTemplate;
-  setPromptTemplate: React.Dispatch<React.SetStateAction<PromptTemplate>>;
+interface PromptTemplateProps {
+  promptTemplate: PromptTemplateType;
+  setPromptTemplate: React.Dispatch<React.SetStateAction<PromptTemplateType>>;
 }
 
 // Input component with focused optimization
@@ -226,32 +74,57 @@ const TemplateInput = memo(({
   );
 });
 
-// Rename the component to clearly indicate it's the editor component
-export default function PromptTemplateEditor({
-  promptTemplate: parentTemplate,
-  setPromptTemplate: setParentTemplate
-}: PromptTemplateEditorProps) {
-  // Use the custom hook for template management
-  const {
-    template,
-    addInput,
-    removeInput,
-    updateInput
-  } = usePromptTemplate(parentTemplate, setParentTemplate);
+// Function component implementation
+function PromptTemplateComponent({
+  promptTemplate,
+  setPromptTemplate
+}: PromptTemplateProps) {
+  // Direct operations on the template through the setter
+  const addInput = () => {
+    setPromptTemplate(prev => ({
+      ...prev,
+      inputs: [
+        ...prev.inputs, 
+        {
+          id: `input-${Date.now()}`,
+          description: "New input",
+          content: ""
+        }
+      ]
+    }));
+  };
+  
+  const removeInput = (inputId: string) => {
+    setPromptTemplate(prev => ({
+      ...prev,
+      inputs: prev.inputs.filter(input => input.id !== inputId)
+    }));
+  };
+  
+  const updateInput = (inputId: string, field: 'content' | 'description', value: string) => {
+    setPromptTemplate(prev => ({
+      ...prev,
+      inputs: prev.inputs.map(input => 
+        input.id === inputId 
+          ? { ...input, [field]: value }
+          : input
+      )
+    }));
+  };
 
   return (
-    <section className="mb-6" id="prompt-template-editor">
+    <section className="mb-6" id="prompt-template">
       <div className="rounded-lg p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all duration-200 relative">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xs font-semibold bg-muted/50 py-1 px-3 rounded-full text-muted-foreground">Prompt Template Editor</h3>
+          <h3 className="text-xs font-semibold bg-muted/50 py-1 px-3 rounded-full text-muted-foreground">Prompt Template</h3>
         </div>
         
         <div className="rounded-lg border border-border/30 p-3 bg-card/50">
-          {template.inputs.map((input) => (
+          {promptTemplate.inputs.map((input) => (
             <TemplateInput
               key={input.id}
               input={input}
-              canDelete={template.inputs.length > 1}
+              canDelete={promptTemplate.inputs.length > 1}
               onContentChange={(value) => updateInput(input.id, 'content', value)}
               onDescriptionChange={(value) => updateInput(input.id, 'description', value)}
               onDelete={() => removeInput(input.id)}
@@ -275,4 +148,10 @@ export default function PromptTemplateEditor({
       </div>
     </section>
   );
-} 
+}
+
+// Memoize the component to prevent unnecessary re-renders
+const PromptTemplate = memo(PromptTemplateComponent);
+
+// Export the memoized component as default
+export default PromptTemplate; 

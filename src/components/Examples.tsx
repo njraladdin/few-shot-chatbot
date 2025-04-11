@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { memo } from 'react';
 import { Button } from "@/components/ui/button";
 import { PlusCircle, X, Check, ChevronDown } from "lucide-react";
 import { EditableText } from "@/components/ui/editable-text";
@@ -25,22 +25,6 @@ export const exampleTypeLabels: Record<ExampleType, { first: string, second: str
   'name-content': { first: 'Name', second: 'Content' },
 };
 
-// Local storage key for examples
-export const EXAMPLES_STORAGE_KEY = 'few-shot-chatbot-examples';
-
-// Check if localStorage is available
-const isLocalStorageAvailable = () => {
-  try {
-    const testKey = 'test-localStorage';
-    localStorage.setItem(testKey, testKey);
-    localStorage.removeItem(testKey);
-    return true;
-  } catch (e) {
-    console.error('localStorage is not available:', e);
-    return false;
-  }
-};
-
 interface ExamplesProps {
   examples: Example[];
   setExamples: React.Dispatch<React.SetStateAction<Example[]>>;
@@ -50,7 +34,8 @@ interface ExamplesProps {
   setShowExampleManager: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export default function Examples({ 
+// The component implementation
+function ExamplesComponent({ 
   examples, 
   setExamples, 
   activeExampleIds, 
@@ -58,19 +43,6 @@ export default function Examples({
   showExampleManager,
   setShowExampleManager
 }: ExamplesProps) {
-  // Save examples to localStorage whenever they change
-  useEffect(() => {
-    if (isLocalStorageAvailable() && (examples.length > 0 || localStorage.getItem(EXAMPLES_STORAGE_KEY))) {
-      try {
-        const examplesJSON = JSON.stringify(examples);
-        localStorage.setItem(EXAMPLES_STORAGE_KEY, examplesJSON);
-        console.log('Examples saved to localStorage:', examples);
-      } catch (error) {
-        console.error("Failed to save examples to localStorage:", error);
-      }
-    }
-  }, [examples]);
-
   // Toggle example selection
   const toggleExampleSelection = (exampleId: string) => {
     setActiveExampleIds(prev => {
@@ -298,4 +270,10 @@ export default function Examples({
       )}
     </section>
   );
-} 
+}
+
+// Memoize the component to prevent unnecessary re-renders
+const Examples = memo(ExamplesComponent);
+
+// Export the memoized component as default
+export default Examples; 
