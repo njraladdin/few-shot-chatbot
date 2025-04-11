@@ -1,8 +1,24 @@
 import { memo } from 'react';
 import { Button } from "@/components/ui/button";
-import { PlusCircle, X } from "lucide-react";
+import { PlusCircle, X, GripVertical } from "lucide-react";
 import { EditableText } from "@/components/ui/editable-text";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
 
 // Define PromptTemplate types
 export type PromptTemplateType = {
@@ -21,8 +37,8 @@ interface PromptTemplateProps {
   setPromptTemplate: React.Dispatch<React.SetStateAction<PromptTemplateType>>;
 }
 
-// Input component with focused optimization
-const TemplateInput = memo(({ 
+// Sortable Input component with drag functionality
+const SortableTemplateInput = memo(({ 
   input,
   canDelete,
   onContentChange,
@@ -35,16 +51,45 @@ const TemplateInput = memo(({
   onDescriptionChange: (value: string) => void,
   onDelete: () => void
 }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: input.id });
+
+  const style = {
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transition,
+    zIndex: isDragging ? 10 : 'auto',
+  };
+
   return (
-    <div className="mb-5 text-sm last:mb-1">
-      <div className="p-3 group/input relative">
+    <div 
+      ref={setNodeRef} 
+      style={style} 
+      className="mb-5 text-sm last:mb-1 group/item"
+    >
+      <div className={`p-3 group/input relative rounded-lg border border-transparent ${isDragging ? 'bg-muted/60 shadow-lg border-border/20' : 'hover:bg-muted/30'} transition-all duration-200`}>
+        {/* Drag handle - only appears on hover */}
+        <div 
+          {...attributes} 
+          {...listeners}
+          className="absolute left-3 top-3 opacity-0 group-hover/item:opacity-70 hover:opacity-100 cursor-grab active:cursor-grabbing p-1 rounded-md hover:bg-background transition-all duration-200 ease-in-out"
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+        </div>
+
         {/* Description field */}
         <EditableText
           value={input.description}
           onChange={onDescriptionChange}
           multiline={false}
           placeholder="Click to add description..."
-          className="mb-2"
+          className="mb-2 pl-7"
         />
 
         {/* Content field */}
@@ -79,6 +124,36 @@ function PromptTemplateComponent({
   promptTemplate,
   setPromptTemplate
 }: PromptTemplateProps) {
+  // Set up drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // A bit more forgiving drag distance
+        delay: 100, // Slight delay to prevent accidental drags
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Handle drag end
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (active.id !== over?.id) {
+      setPromptTemplate((prev) => {
+        const oldIndex = prev.inputs.findIndex((item) => item.id === active.id);
+        const newIndex = prev.inputs.findIndex((item) => item.id === over?.id);
+        
+        return {
+          ...prev,
+          inputs: arrayMove(prev.inputs, oldIndex, newIndex),
+        };
+      });
+    }
+  };
+
   // Direct operations on the template through the setter
   const addInput = () => {
     setPromptTemplate(prev => ({
@@ -119,17 +194,28 @@ function PromptTemplateComponent({
           <h3 className="text-xs font-semibold bg-muted/50 py-1 px-3 rounded-full text-muted-foreground">Prompt Template</h3>
         </div>
         
-        <div className="rounded-lg border border-border/30 p-3 bg-card/50">
-          {promptTemplate.inputs.map((input) => (
-            <TemplateInput
-              key={input.id}
-              input={input}
-              canDelete={promptTemplate.inputs.length > 1}
-              onContentChange={(value) => updateInput(input.id, 'content', value)}
-              onDescriptionChange={(value) => updateInput(input.id, 'description', value)}
-              onDelete={() => removeInput(input.id)}
-            />
-          ))}
+        <div className="rounded-lg border border-border/30 p-3 bg-card/50 relative">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={promptTemplate.inputs.map(input => input.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {promptTemplate.inputs.map((input) => (
+                <SortableTemplateInput
+                  key={input.id}
+                  input={input}
+                  canDelete={promptTemplate.inputs.length > 1}
+                  onContentChange={(value) => updateInput(input.id, 'content', value)}
+                  onDescriptionChange={(value) => updateInput(input.id, 'description', value)}
+                  onDelete={() => removeInput(input.id)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
           
           {/* Add input button */}
           <div className="flex justify-center mt-2">
