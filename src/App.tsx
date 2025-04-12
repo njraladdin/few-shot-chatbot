@@ -1156,8 +1156,8 @@ function App() {
             {/* Centered Title */}
             <div className="flex-grow flex items-center justify-center">
               <a href="/" className="text-xl font-semibold tracking-tight text-foreground flex items-center">
-                <PlusSquare className="h-[18px] w-[18px] mr-2 rounded-full bg-primary/10 p-1" />
-                <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Few-Shot Chatbot</span>
+                <PlusSquare className="h-[18px] w-[18px] mr-2 rounded-full bg-background/20 p-1" />
+                <span className="text-foreground">Few-Shot Chatbot</span>
               </a>
             </div>
             
@@ -1171,14 +1171,14 @@ function App() {
                 disabled={!hasUnsavedChanges}
                 className={`relative text-xs flex items-center gap-1.5 bg-background/70 h-7 px-3 
                   ${hasUnsavedChanges 
-                    ? 'text-foreground border-primary/30' 
+                    ? 'text-foreground border-border/50' 
                     : 'text-muted-foreground border-border/20'
                   }`}
                 title="Save project to localStorage"
               >
                 <span>Save Project</span>
                 {hasUnsavedChanges && (
-                  <div className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary translate-x-1/2 -translate-y-1/2"></div>
+                  <div className="absolute top-0 right-0 h-2 w-2 rounded-full bg-muted translate-x-1/2 -translate-y-1/2"></div>
                 )}
               </Button>
 
@@ -1255,7 +1255,7 @@ function App() {
               >
                 <div className={`flex items-center justify-between w-full ${isExamplesOpen ? 'px-3' : 'px-4'}`}>
                   <h3 className="text-sm font-medium flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
-                    <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Examples</span>
+                    <span className="text-foreground">Examples</span>
                     {examples.length > 0 && (
                       <span className="text-xs text-muted-foreground bg-muted/40 px-1.5 py-0 rounded-full flex-shrink-0 min-w-[18px] text-center">
                         {examples.length}
@@ -1306,7 +1306,7 @@ function App() {
               >
                 <div className={`flex items-center justify-between w-full ${isTemplateOpen ? 'px-3' : 'px-4'}`}>
                   <h3 className="text-sm font-medium flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
-                    <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Prompt Template</span>
+                    <span className="text-foreground">Prompt Template</span>
                     {promptTemplate?.inputs?.length > 0 && (
                       <span className="text-xs text-muted-foreground bg-muted/40 px-1.5 py-0 rounded-full flex-shrink-0 min-w-[18px] text-center">
                         {promptTemplate.inputs.length}
@@ -1346,7 +1346,7 @@ function App() {
           <div className="flex-shrink-0 border-b border-border/30 bg-background/80 backdrop-blur-sm">
             <div className="flex items-center justify-between h-12 px-6">
               <h2 className="text-sm font-medium flex items-center gap-4">
-                <span className="bg-gradient-to-r from-primary to-purple-400 text-transparent bg-clip-text">Conversation</span>
+                <span className="text-foreground">Conversation</span>
 
                 <div className="flex items-center gap-2">
 
